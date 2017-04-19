@@ -1,3 +1,5 @@
+"use strict";
+
 // Sahil Gupta
 
 /*
@@ -10,6 +12,7 @@ BUNDLE is 2d object
 	keys are [NODE][ADDRID]
 	value is VOTE
 VOTE is [pk_node, signature]
+ADDRID is (TX, index(addr), value)
 
 each promise catches its own errors
 so won't short-circuit Promise.all
@@ -31,6 +34,7 @@ function checkTx(tx) {
 
 // algorithm v.1
 // input transaction TX and period J
+// return nothing but log queries and commits
 function userValidatesTx(tx, j) {
 	// phase 1 query
 	var bundle = {};					// bundle of votes
@@ -108,4 +112,22 @@ function userValidatesTx(tx, j) {
 	}).catch(err => {
 		console.log('queries error ' + err);
 	});
+}
+
+
+// algorithm v.2
+// input NODE, ADDRID, and transaction TX
+// return node's vote
+// todo: create and return a promise
+function checkUnspent(node, addrid, tx) {
+
+}
+
+
+// algorithm v.3
+// input transaction TX, period J, BUNDLE, NODE
+// return node's vote
+// todo: create and return a promise
+function commitTx(tx, j, bundle, node) {
+
 }
