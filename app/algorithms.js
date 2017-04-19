@@ -5,9 +5,7 @@
 /*
 Notes
 
-BUNDLE is 2d object
-	BUNDLE[NODE][ADDRID.DIGEST] = VOTE
-VOTE is [nickname, signature]
+
 */
 
 const crypto = require('crypto');
@@ -17,6 +15,14 @@ const codes = secrets.codes;
 // todo: data structure
 // map NODEOFFICE.NICKNAME (NODE) to NODEOFFICE
 var nicknameMap = {};
+
+
+class vote {
+	constructor(publicKey, signature) {
+		this.pk = publicKey;
+		this.sig = signature;
+	}
+}
 
 
 class addrid {
@@ -46,11 +52,11 @@ class tx {
 	// set value(x) { this.value = x; }
 }
 
-// NODEOFFICE is the class doing tx verification
-// NODE is what the public sees == NODEOFFICE.NICKNAME
+// NODEOFFICE is the class doing tx verification == the actual bank
+// NODE is what the public sees == NODEOFFICE.NICKNAME == bank stock symbol
 class nodeOffice {
 	constructor(nickname, utxo, pset, txset) {
-		this.nickname = nickname;	// what the user calls the 'node'
+		this.nickname = nickname;	// what users calls the 'node'
 									// must be unique among nodeOffices
 		this.pk = crypto.createHmac('sha256', codes.second)
 						.update(nickname)
@@ -110,6 +116,7 @@ function checkTx(tx) {
 
 // algorithm v.1
 // input transaction TX and period J
+// BUNDLE is 2d object, BUNDLE[NODE][ADDRID.DIGEST] = VOTE
 // return nothing but log queries and commits
 function userValidatesTx(tx, j) {
 	// phase 1 query
