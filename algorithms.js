@@ -5,26 +5,69 @@
 /*
 Notes
 
-TX is object
-	key is INPUTS or OUTPUTS
-	value is array of ADDRIDS
 BUNDLE is 2d object
-	keys are [NODE][ADDRID]
-	value is VOTE
+	BUNDLE[NODE][ADDRID] = VOTE
 VOTE is [pk_node, signature]
-ADDRID is (TX, index(addr), value)
+ADDRID is [TX, index(address), value]
+
+NODEOFFICE is the class doing tx verification
+NODE is what the public sees == NODEOFFICE.NICKNAME
 
 each promise catches its own errors
 so won't short-circuit Promise.all
 */
 
+class tx {
+	constructor(inputs, outputs, value) {
+		this.inputs = inputs;	// array of addrids
+		this.outputs = outputs;	// array of addrids
+		this.value = value;
+	}
+
+	get inputs() { return this.inputs; }
+	get outputs() { return this.outputs; }
+	get value() { return this.value; }
+
+	// set value(x) { this.value = x; }
+}
+
+class nodeOffice {
+	constructor(nickname, utxo, pset, txset) {
+		this.nickname = nickname;	// what the public sees as 'node'
+		this.utxo = utxo;			// unspent tx outputs object
+									// key is ADDRID, value is null
+									// but value is [address, value] if spent
+		this.pset = pset;			// for catching double spends
+		this.txset = txset;			// for sealing txs
+	}
+
+	get nickname() { return this.nickname; }
+
+	// algorithm v.2
+	// input NODE, ADDRID, and transaction TX
+	// return node's vote
+	// todo: create and return a promise
+	static checkUnspent(node, addrid, tx) {
+		return new Promise((resolve, reject) => {
+			if (!checkTx(tx) || getOwners(addrid).includes(node)) {
+				return null;
+			} else if (999) { // todo
+				return 'todo';
+			} else {
+				return 'todo';
+			}
+		});
+	}
+}
+
 
 // return array
+// todo: sort owners, so can search fast
 function getOwners(addrid) {
 	
 }
 
-
+// todo
 function checkTx(tx) {
 	// total input val >= total output value
 	// input addrids point to valid txs
@@ -48,7 +91,7 @@ function userValidatesTx(tx, j) {
 			var node = nodes[ii];
 			
 			// note: error handling inside query
-			var query = checkUnspent(node, addrid, tx)
+			var query = nodeOffice.checkUnspent(node, addrid, tx)
 				.then(vote => {
 					// console.log('query vote ' + vote);
 
@@ -79,8 +122,8 @@ function userValidatesTx(tx, j) {
 		console.log('queries results ' + results);
 		
 		// phase 2 commit
-		var sampleAddrid = tx.outputs[0];
-		var nodes = getOwners(sampleAddrid);
+		var addridSample = tx.outputs[0];
+		var nodes = getOwners(addridSample);
 		
 		var commits = [];			// list of commit promises
 
@@ -112,15 +155,6 @@ function userValidatesTx(tx, j) {
 	}).catch(err => {
 		console.log('queries error ' + err);
 	});
-}
-
-
-// algorithm v.2
-// input NODE, ADDRID, and transaction TX
-// return node's vote
-// todo: create and return a promise
-function checkUnspent(node, addrid, tx) {
-
 }
 
 
