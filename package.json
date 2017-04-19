@@ -16,5 +16,8 @@
   "bugs": {
     "url": "https://github.com/sahil-gupta/fedcoin/issues"
   },
-  "homepage": "https://github.com/sahil-gupta/fedcoin#readme"
+  "homepage": "https://github.com/sahil-gupta/fedcoin#readme",
+  "dependencies": {
+    "express": "^4.15.2"
+  }
 }

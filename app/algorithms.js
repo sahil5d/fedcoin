@@ -7,16 +7,15 @@ Notes
 
 BUNDLE is 2d object
 	BUNDLE[NODE][ADDRID.DIGEST] = VOTE
-VOTE is [pk_node, signature]
+VOTE is [nickname, signature]
 */
 
 const crypto = require('crypto');
 const secrets = require('./secrets');
-
+const codes = secrets.codes;
 
 // todo: data structure
-// key is NODE == NODEOFFICE.NICKNAME
-// value is NODEOFFICE
+// map NODEOFFICE.NICKNAME (NODE) to NODEOFFICE
 var nicknameMap = {};
 
 
@@ -25,7 +24,7 @@ class addrid {
 		this.tx = tx;
 		this.index = index;		// index(address) in tx output
 		this.value = value;
-		this.digest = crypto.createHmac('sha256', secrets.first)
+		this.digest = crypto.createHmac('sha256', codes.first)
 						.update(tx+index+value)
 						.digest('hex');
 	}
@@ -51,8 +50,13 @@ class tx {
 // NODE is what the public sees == NODEOFFICE.NICKNAME
 class nodeOffice {
 	constructor(nickname, utxo, pset, txset) {
-		this.nickname = nickname;	// what the public sees as 'node'
-									// must be unique like ids
+		this.nickname = nickname;	// what the user calls the 'node'
+									// must be unique among nodeOffices
+		this.pk = crypto.createHmac('sha256', codes.second)
+						.update(nickname)
+						.digest('hex');
+									// public key
+									// todo can't just create pk, need sk
 		this.utxo = utxo;			// object of unspent tx outputs
 									// key is ADDRID.DIGEST, value is null
 									// but value is [address, value] if spent
@@ -63,15 +67,18 @@ class nodeOffice {
 	// algorithm v.2
 	// input ADDRID, transaction TX
 	// return promise of node's vote
-	// todo: create and return a promise
 	checkUnspent(addrid, tx) {
+		var digest = addrid.digest;
+
 		return new Promise((resolve, reject) => {
 			if (!checkTx(tx) || getOwners(addrid).includes(node)) {
-				return null;
-			} else if ('todo') {
-				return 'todo';
+				resolve(null);
+			} else if (this.utxo[digest] || this.pset[digest] == tx) {
+				this.utxo[digest] = null;	// idempotent action
+				this.pset[digest] = tx;		// idempotent action
+				// todo final resolve()
 			} else {
-				return 'todo';
+				resolve(null);
 			}
 		});
 	}
@@ -88,7 +95,7 @@ function userCheckUnspent(node, addrid, tx) {
 
 
 // return array
-// todo: sort owners, so can search fast
+// todo: sort owners, so can search fast in checkUnspent
 function getOwners(addrid) {
 	
 }

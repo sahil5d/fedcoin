@@ -1,3 +1,7 @@
-var first = 'bernanke';
+var codes = {
+    first: 'bernanke',
+    second: 'yellen',
+    third: 'greenspan'
+};
 
-module.exports.first = first;
+module.exports.codes = codes;
