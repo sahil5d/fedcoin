@@ -9,6 +9,10 @@ TX is object
 BUNDLE is 2d object
 	keys are [NODE][ADDRID]
 	value is VOTE
+VOTE is [pk_node, signature]
+
+each promise catches its own errors
+so won't short-circuit Promise.all
 */
 
 
@@ -42,13 +46,14 @@ function userValidatesTx(tx, j) {
 			// note: error handling inside query
 			var query = checkUnspent(node, addrid, tx)
 				.then(vote => {
-					// VOTE is [pk_node, signature]
+					// console.log('query vote ' + vote);
+
 					// note: paper says exit loop if any vote is a no
-					// note: but that's excessive. it's ok if majority votes are yes
+					// note: but here we're ok if majority votes are yes
 					if (!vote)
 						return null;
 
-					if (!bundle[node])				// if key is empty, create it
+					if (!bundle[node])				// create key if empty
 						bundle[node] = {};
 						
 					bundle[node][addrid] = vote;	// add vote to bundle
@@ -63,24 +68,44 @@ function userValidatesTx(tx, j) {
 		}
 	}
 	
-	// phase 2 commit
 	// wait for all queries to finish
-	// note: if a query throws an error, no problem
-	// note: each query catches errors so won't break Promise.all
 	// todo: put time limit on how long Promise.all waits
-	Promise.all(queries).then(result => {
-		console.log('result ' + result);				// null, vote, or error
+	Promise.all(queries).then(results => {
+		// array of nulls, votes, or errors
+		console.log('queries results ' + results);
 		
+		// phase 2 commit
 		var sampleAddrid = tx.outputs[0];
 		var nodes = getOwners(sampleAddrid);
 		
+		var commits = [];			// list of commit promises
+
 		for (var i in nodes) {
 			var node = nodes[i];
-			
-			// todo: need to handle commitTx like a promise
-			var vote = commitTx(tx, j, bundle, node);	// returns [pk_node, sig]
-		}	
-	}).catch(function(err) {
+
+			var commit = commitTx(tx, j, bundle, node)
+				.then(vote => {
+					// console.log('commit vote ' + vote);
+					return vote;	// could be null
+				}).catch(err => {
+					console.log('commit error ' + err);
+					return err;
+				});
+
+			commits.push(commit);
+		}
+
+		// wait for all commits to finish
+		// todo: put time limit on how long Promise.all waits
+		Promise.all(commits).then(results => {
+			// array of nulls, votes, or errors
+			// todo: user saves this evidence to potentially audit a node
+			console.log('commits results ' + results);
+		}).catch(err => {
+			console.log('commits error ' + err);
+		});
+
+	}).catch(err => {
 		console.log('queries error ' + err);
 	});
 }
