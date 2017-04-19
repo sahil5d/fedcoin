@@ -6,16 +6,35 @@
 Notes
 
 BUNDLE is 2d object
-	BUNDLE[NODE][ADDRID] = VOTE
+	BUNDLE[NODE][ADDRID.DIGEST] = VOTE
 VOTE is [pk_node, signature]
-ADDRID is [TX, index(address), value]
-
-NODEOFFICE is the class doing tx verification
-NODE is what the public sees == NODEOFFICE.NICKNAME
-
-each promise catches its own errors
-so won't short-circuit Promise.all
 */
+
+const crypto = require('crypto');
+const secrets = require('./secrets');
+
+
+// todo: data structure
+// key is NODE == NODEOFFICE.NICKNAME
+// value is NODEOFFICE
+var nicknameMap = {};
+
+
+class addrid {
+	constructor(tx, index, value) {
+		this.tx = tx;
+		this.index = index;		// index(address) in tx output
+		this.value = value;
+		this.digest = crypto.createHmac('sha256', secrets.first)
+						.update(tx+index+value)
+						.digest('hex');
+	}
+
+	toString() {
+		return this.tx + this.index + this.value;
+	}
+}
+
 
 class tx {
 	constructor(inputs, outputs, value) {
@@ -24,40 +43,47 @@ class tx {
 		this.value = value;
 	}
 
-	get inputs() { return this.inputs; }
-	get outputs() { return this.outputs; }
-	get value() { return this.value; }
-
+	// get value() { return this.value; }
 	// set value(x) { this.value = x; }
 }
 
+// NODEOFFICE is the class doing tx verification
+// NODE is what the public sees == NODEOFFICE.NICKNAME
 class nodeOffice {
 	constructor(nickname, utxo, pset, txset) {
 		this.nickname = nickname;	// what the public sees as 'node'
-		this.utxo = utxo;			// unspent tx outputs object
-									// key is ADDRID, value is null
+									// must be unique like ids
+		this.utxo = utxo;			// object of unspent tx outputs
+									// key is ADDRID.DIGEST, value is null
 									// but value is [address, value] if spent
 		this.pset = pset;			// for catching double spends
 		this.txset = txset;			// for sealing txs
 	}
 
-	get nickname() { return this.nickname; }
-
 	// algorithm v.2
-	// input NODE, ADDRID, and transaction TX
-	// return node's vote
+	// input ADDRID, transaction TX
+	// return promise of node's vote
 	// todo: create and return a promise
-	static checkUnspent(node, addrid, tx) {
+	checkUnspent(addrid, tx) {
 		return new Promise((resolve, reject) => {
 			if (!checkTx(tx) || getOwners(addrid).includes(node)) {
 				return null;
-			} else if (999) { // todo
+			} else if ('todo') {
 				return 'todo';
 			} else {
 				return 'todo';
 			}
 		});
 	}
+}
+
+
+// input NODE, ADDRID, transaction TX
+// find the NODEOFFICE with nickname NODE
+// return promise of NODEOFFICE's vote
+function userCheckUnspent(node, addrid, tx) {
+	var nodeOffice = nicknameMap[node];
+	return	nodeOffice.checkUnspent(addrid, tx);
 }
 
 
@@ -91,7 +117,8 @@ function userValidatesTx(tx, j) {
 			var node = nodes[ii];
 			
 			// note: error handling inside query
-			var query = nodeOffice.checkUnspent(node, addrid, tx)
+			// note: each promise catches its errors. won't break Promise.all
+			var query = userCheckUnspent(node, addrid, tx)
 				.then(vote => {
 					// console.log('query vote ' + vote);
 
@@ -100,10 +127,10 @@ function userValidatesTx(tx, j) {
 					if (!vote)
 						return null;
 
-					if (!bundle[node])				// create key if empty
+					if (!bundle[node])					// create key if empty
 						bundle[node] = {};
 						
-					bundle[node][addrid] = vote;	// add vote to bundle
+					bundle[node][addrid.digest] = vote;	// add vote to bundle
 					
 					return vote;
 				}).catch(err => {

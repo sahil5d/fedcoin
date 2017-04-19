@@ -1,0 +1,20 @@
+{
+  "name": "fedcoin",
+  "version": "1.0.0",
+  "description": "central bank cryptocurrency",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sahil-gupta/fedcoin.git"
+  },
+  "author": "Sahil",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sahil-gupta/fedcoin/issues"
+  },
+  "homepage": "https://github.com/sahil-gupta/fedcoin#readme"
+}
