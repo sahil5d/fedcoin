@@ -2,3 +2,4 @@
 node_modules/
 .npm
 # ultimately app/secrets.js
+temp.js
