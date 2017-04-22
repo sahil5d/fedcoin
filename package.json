@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/sahil-gupta/fedcoin#readme",
   "dependencies": {
-    "express": "^4.15.2"
+    "express": "^4.15.2",
+    "node-rsa": "^0.4.2"
   }
 }
