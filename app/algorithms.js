@@ -12,16 +12,38 @@ future = to do later
 */
 
 const crypto = require('crypto');
-const nodeRSA = require('node-rsa');
+const cryptico = require('cryptico-js');
 
 const secrets = require('./secrets');
 const codes = secrets.codes;
 
 // todo
-// key is NODE == NODECLASS.PK
+// key is NODE aka NODECLASS.PK
 // value is NODECLASS
 var getNodeClass = {};
 
+
+// input string or Buffer with hex encoding
+// return sha256 hash
+function hash(data) {
+	return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+// return Buffer instead of hex string
+function hashBuffer(data) {
+    return crypto.createHash('sha256').update(data).digest();
+}
+
+// return ripemd160 hash
+function hashAltBuffer(data) {
+    return crypto.createHash('ripemd160').update(data).digest('hex');
+}
+
+// input string data and key
+// return sha256 hmac
+function hmac(data, key) {
+	return crypto.createHmac('sha256', key).update(data).digest('hex');	
+}
 
 // return array of nodes
 // todo: sort owners, so can search fast in checkUnspent
@@ -43,9 +65,7 @@ class Addrid {
 		this.txdigest = tx.digest;			
 		this.index = index;		// index(address) in tx output
 		this.value = value;
-		this.digest = crypto.createHash('sha256')
-						.update(tx.digest + index + value)
-						.digest('hex');
+		this.digest = hash(tx.digest + index + value);
 	}
 
 	toString() {
@@ -59,11 +79,51 @@ class Tx {
 		this.inputs = inputs;	// array of addrids
 		this.outputs = outputs;	// array of addrids
 		this.value = value;
-		this.digest = crypto.createHash('sha256')
-						.update(JSON.stringify(inputs+outputs+value))
-						.digest('hex');
+		this.digest = hash(JSON.stringify(inputs+outputs+value));
 	}
 }
+
+
+// todo
+// future use base58 encoded address
+class Wallet {
+	constructor(passphrase) {
+		this.passphraseSafe = hmac(passphrase, codes.first);
+		this.index = 0;		// index of oldest unused address
+		this.sks = [];		// todo need to create first sk
+		this.pks = [];
+		this.addresses = [];
+	}
+
+	// input how many addresses you want to create, and passphrase
+	// return if success
+	createAddresses(n, passphrase) {
+		if (hmac(passphrase, codes.first) !=== this.passphraseSafe)
+			return false;
+
+		var iInsert = this.addresses.length;
+		for (var i = 0; i < n; i++) {
+			var sk = hmac(passphrase + (iInsert + i), codes.second);
+			// not enough has to be longer
+			// use promise because takes a long time
+			var pk = '';
+			// todo
+
+
+			// now create address from public key, like bitcoin
+			var pkBuffer = Buffer.from(pk, 'hex');
+			var doublehash = hashAltBuffer(hashBuffer(pkBuffer));
+			var checksum = hash(hashBuffer(temp)).substr(0, 8);
+			var address = doublehash + checksum;
+
+			this.sks.push(sk);
+			this.pks.push(pk);
+			this.addresses.push(address);
+		}
+		return null;
+	}
+}
+
 
 // NODECLASS is the class doing tx verif, is the commercial bank
 // NODE is what users call node's public key PK
@@ -94,10 +154,9 @@ class NodeClass {
 		var digest = addrid.digest;
 
 		return new Promise((resolve, reject) => {
-			if (!this.checkTx(tx) ||
-				!getOwners(addrid).includes(this.pk)) { // todo refactor to whether this node !HAS the addrid
+			if (!this.checkTx(tx) || !getOwners(addrid).includes(this.pk)) { // todo refactor to whether this node !HAS the addrid
 				resolve(null);
-			} else if (this.utxo[digest] || this.pset[digest] == tx) {
+			} else if (this.utxo[digest] || this.pset[digest].digest === tx.digest) {
 				this.utxo[digest] = null;	// idempotent action
 				this.pset[digest] = tx;		// idempotent action
 				// todo resolve(new Vote(pk, sig));
@@ -115,8 +174,7 @@ class NodeClass {
 		return new Promise((resolve, reject) => {
 			var addridSample = tx.outputs[0];
 
-			if (!this.checkTx(tx) ||
-				!getOwners(addridSample).includes(this.pk)) { // todo refactor to whether this node !HAS the addridsample
+			if (!this.checkTx(tx) || !getOwners(addridSample).includes(this.pk)) { // todo refactor to whether this node !HAS the addridsample
 				resolve(null);
 			} else {
 				var allInputsValid = true;
@@ -145,9 +203,11 @@ class NodeClass {
 class User {
 	// todo refactor this constructor. need array of privkey,pubkey,address
 	// need constructor where can instantiate with passphrase
-	constructor(prop1, prop2) {
-		this.prop1 = prop1;
-		this.prop2 = prop2;
+	constructor(nickname, passphrase) {
+		this.nickname = nickname;
+		this.wallet = new Wallet(passphrase);
+
+		this.wallet.createAddresses(3, passphrase); // create new addresses
 	}
 
 	// helper fxs to find NODECLASS from NODE
