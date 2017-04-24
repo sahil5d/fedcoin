@@ -13,15 +13,15 @@ future = to do later
 
 const crypto = require('crypto');
 const cryptico = require('cryptico-js');
-var NodeRSA = require('node-rsa');
+const NodeRSA = require('node-rsa');
 
 const secrets = require('./secrets');
 const codes = secrets.codes;
 
 // todo
-// key is NODE aka NODECLASS.PK
+// key is NODE aka NODECLASS.NICKNAME
 // value is NODECLASS
-var getNodeClass = {};
+const getNodeClass = {};
 
 
 function log(x) { console.log(x); }
@@ -51,14 +51,13 @@ function hmac(data, key) {
 // input public key pem
 // return address as hex string
 function publicPemToAddress(publicPem) {
-	var pk = new NodeRSA();
-	pk.importKey(publicPem, 'pkcs1-public');
-	var N = pk.exportKey('components-public').n; // hex buffer
+	const publicKey = new NodeRSA();
+	publicKey.importKey(publicPem, 'pkcs1-public');
+	const N = publicKey.exportKey('components-public').n; // hex buffer
 
-	var doublehash = hashAltBuffer(hashBuffer(N));
-	var checksum = hash(hashBuffer(doublehash)).substr(0, 8);
-	var address = doublehash + checksum;
-	return address;
+	const doublehash = hashAltBuffer(hashBuffer(N));
+	const checksum = hash(hashBuffer(doublehash)).substr(0, 8);
+	return doublehash + checksum;
 }
 
 // return array of nodes
@@ -70,14 +69,14 @@ function getOwners(addrid) {
 // input private key from cryptico
 // return key object with bigintegers converted to hex buffers
 cryptico.skToHex = function(sk) {
-    var keys = ['n', 'd', 'p', 'q', 'dmp1', 'dmq1', 'coeff'];
-    var dict = {};
+    const keys = ['n', 'd', 'p', 'q', 'dmp1', 'dmq1', 'coeff'];
+    const dict = {};
     keys.forEach(function(k){
         dict[k] = Buffer.from(sk[k].toString(16), 'hex');
     });
     dict.e = 3; // cryptico enforces exponent of 3
     return dict;
-}
+};
 
 
 class Vote {
@@ -125,23 +124,23 @@ class Wallet {
 	// create new sks, pks, and addresses
 	// return true if succeeds
 	createAddresses(n, passphrase) {
-		if (hmac(passphrase, codes.first) !=== this.passphraseSafe)
+		if (hmac(passphrase, codes.first) !== this.passphraseSafe)
 			return false;
 
-		var iInsert = this.addresses.length;
+		const iInsert = this.addresses.length;
 		for (var i = 0; i < n; i++) {
 			// deterministic private key
-			var seed = hmac(passphrase + (iInsert + i), codes.second);
-			var skSeeded = cryptico.generateRSAKey(seed, 2048);
+			const seed = hmac(passphrase + (iInsert + i), codes.second);
+			const skSeeded = cryptico.generateRSAKey(seed, 2048);
 
-			var sk = new NodeRSA();
+			const sk = new NodeRSA();
 			// note: adds leading zeros to n,p,q,dmp1 during import
 			sk.importKey(cryptico.skToHex(skSeeded), 'components');
 			// log(sk.exportKey('components-private'))
 
-			var privatePem = sk.exportKey('pkcs1-private');
-			var publicPem = sk.exportKey('pkcs1-public');
-			var address = publicPemToAddress(publicPem);
+			const privatePem = sk.exportKey('pkcs1-private');
+			const publicPem = sk.exportKey('pkcs1-public');
+			const address = publicPemToAddress(publicPem);
 
 			this.sks.push(privatePem);
 			this.pks.push(publicPem);
@@ -152,19 +151,23 @@ class Wallet {
 }
 
 
-// NODECLASS is the class doing tx verif, is the commercial bank
-// NODE is what users call node's public key PK
+// NODECLASS is the class verifying txs, is the commercial bank
+// NODECLASS.NICKNAME is what users understand as NODE
 class NodeClass {
 	constructor(nickname, utxo, pset, txset) {
-		this.nickname = nickname;	// could be bank stock symbol
-		this.sk = 5;				// todo sk. keep secure
-		this.pk = 5; 				// todo
-		// this.address = null;		// future for central bank to pay reward
+		this.nickname = nickname;	// bank stock symbol. must be unique
 		this.utxo = utxo;			// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
 		this.pset = pset;			// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
 		this.txset = txset;			// array for sealing txs
+
+		const privateKey = new NodeRSA({b: 2048});
+		this.sk = privateKey.exportKey('pkcs1-private');
+		this.pk = privateKey.exportKey('pkcs1-public');
+
+		// this.wallet = new Wallet(passphrase); // future to receive fed fees
+		// this.wallet.createAddresses(3, passphrase);
 	}
 
 	// todo
@@ -178,7 +181,7 @@ class NodeClass {
 	// input ADDRID, transaction TX
 	// return promise of node's vote
 	checkUnspent(addrid, tx) {
-		var digest = addrid.digest;
+		const digest = addrid.digest;
 
 		return new Promise((resolve, reject) => {
 			if (!this.checkTx(tx) || !getOwners(addrid).includes(this.pk)) { // todo refactor to whether this node !HAS the addrid
@@ -199,7 +202,7 @@ class NodeClass {
 	// return promise of node's vote
 	commitTx(tx, j, bundle) {
 		return new Promise((resolve, reject) => {
-			var addridSample = tx.outputs[0];
+			const addridSample = tx.outputs[0];
 
 			if (!this.checkTx(tx) || !getOwners(addridSample).includes(this.pk)) { // todo refactor to whether this node !HAS the addridsample
 				resolve(null);
@@ -215,7 +218,7 @@ class NodeClass {
 					resolve(null);
 				else {
 					for (var i in tx.outputs) {
-						var addrid = tx.outputs[i];
+						const addrid = tx.outputs[i];
 						this.utxo[addrid.digest] = true;
 					}
 					this.txset.push(tx);
@@ -231,19 +234,18 @@ class User {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
 		this.wallet = new Wallet(passphrase);
-
 		this.wallet.createAddresses(3, passphrase); // create some new addrs
 	}
 
 	// helper fxs to find NODECLASS from NODE
 	// return promise of NODECLASS's vote
 	static checkUnspent(node, addrid, tx) {
-		var nodeClass = getNodeClass[node];	// todo replace with https request
+		const nodeClass = getNodeClass[node]; // todo replace with https req
 											// shouldn't have access to nodecls
 		return nodeClass.checkUnspent(addrid, tx);
 	}
 	static commitTx(node, tx, j, bundle) {
-		var nodeClass = getNodeClass[node];	// todo replace with https request
+		const nodeClass = getNodeClass[node]; // todo replace with https req
 		return nodeClass.commitTx(tx, j, bundle);
 	}
 
@@ -253,15 +255,15 @@ class User {
 	// return nothing but log queries and commits
 	validateTx(tx, j) {
 		// phase 1 query
-		var bundle = {};					// bundle of votes
-		var queries = [];					// list of query promises
+		const bundle = {};						// bundle of votes
+		const queries = [];						// list of query promises
 		
 		for (var i in tx.inputs) {
-			var addrid = tx.inputs[i];
-			var nodes = getOwners(addrid);	// return array
+			const addrid = tx.inputs[i];
+			const nodes = getOwners(addrid);	// return array
 			
 			for (var ii in nodes) {
-				var node = nodes[ii];
+				const node = nodes[ii];
 				
 				// note: each query promise catches its own errors
 				// note: thus won't break Promise.all
@@ -295,13 +297,13 @@ class User {
 			log('queries results ' + results);
 			
 			// phase 2 commit
-			var addridSample = tx.outputs[0];
-			var nodes = getOwners(addridSample);
+			const addridSample = tx.outputs[0];
+			const nodes = getOwners(addridSample);
 			
-			var commits = [];			// list of commit promises
+			const commits = [];			// list of commit promises
 
 			for (var i in nodes) {
-				var node = nodes[i];
+				const node = nodes[i];
 
 				var commit = User.commitTx(node, tx, j, bundle)
 					.then(vote => {
