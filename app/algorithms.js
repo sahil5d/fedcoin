@@ -13,6 +13,7 @@ future = to do later
 
 const crypto = require('crypto');
 const cryptico = require('cryptico-js');
+var NodeRSA = require('node-rsa');
 
 const secrets = require('./secrets');
 const codes = secrets.codes;
@@ -22,6 +23,8 @@ const codes = secrets.codes;
 // value is NODECLASS
 var getNodeClass = {};
 
+
+function log(x) { console.log(x); }
 
 // input string or Buffer with hex encoding
 // return sha256 hash
@@ -45,10 +48,35 @@ function hmac(data, key) {
 	return crypto.createHmac('sha256', key).update(data).digest('hex');	
 }
 
+// input public key pem
+// return address as hex string
+function publicPemToAddress(publicPem) {
+	var pk = new NodeRSA();
+	pk.importKey(publicPem, 'pkcs1-public');
+	var N = pk.exportKey('components-public').n; // hex buffer
+
+	var doublehash = hashAltBuffer(hashBuffer(N));
+	var checksum = hash(hashBuffer(doublehash)).substr(0, 8);
+	var address = doublehash + checksum;
+	return address;
+}
+
 // return array of nodes
 // todo: sort owners, so can search fast in checkUnspent
 function getOwners(addrid) {
 	
+}
+
+// input private key from cryptico
+// return key object with bigintegers converted to hex buffers
+cryptico.skToHex = function(sk) {
+    var keys = ['n', 'd', 'p', 'q', 'dmp1', 'dmq1', 'coeff'];
+    var dict = {};
+    keys.forEach(function(k){
+        dict[k] = Buffer.from(sk[k].toString(16), 'hex');
+    });
+    dict.e = 3; // cryptico enforces exponent of 3
+    return dict;
 }
 
 
@@ -84,43 +112,42 @@ class Tx {
 }
 
 
-// todo
-// future use base58 encoded address
 class Wallet {
 	constructor(passphrase) {
-		this.passphraseSafe = hmac(passphrase, codes.first);
+		this.passphraseSafe = hmac(passphrase, codes.first); // for security
 		this.index = 0;		// index of oldest unused address
-		this.sks = [];		// todo need to create first sk
+		this.sks = [];
 		this.pks = [];
 		this.addresses = [];
 	}
 
-	// input how many addresses you want to create, and passphrase
-	// return if success
+	// input N addresses to create, PASSPHRASE required
+	// create new sks, pks, and addresses
+	// return true if succeeds
 	createAddresses(n, passphrase) {
 		if (hmac(passphrase, codes.first) !=== this.passphraseSafe)
 			return false;
 
 		var iInsert = this.addresses.length;
 		for (var i = 0; i < n; i++) {
-			var sk = hmac(passphrase + (iInsert + i), codes.second);
-			// not enough has to be longer
-			// use promise because takes a long time
-			var pk = '';
-			// todo
+			// deterministic private key
+			var seed = hmac(passphrase + (iInsert + i), codes.second);
+			var skSeeded = cryptico.generateRSAKey(seed, 2048);
 
+			var sk = new NodeRSA();
+			// note: adds leading zeros to n,p,q,dmp1 during import
+			sk.importKey(cryptico.skToHex(skSeeded), 'components');
+			// log(sk.exportKey('components-private'))
 
-			// now create address from public key, like bitcoin
-			var pkBuffer = Buffer.from(pk, 'hex');
-			var doublehash = hashAltBuffer(hashBuffer(pkBuffer));
-			var checksum = hash(hashBuffer(temp)).substr(0, 8);
-			var address = doublehash + checksum;
+			var privatePem = sk.exportKey('pkcs1-private');
+			var publicPem = sk.exportKey('pkcs1-public');
+			var address = publicPemToAddress(publicPem);
 
-			this.sks.push(sk);
-			this.pks.push(pk);
+			this.sks.push(privatePem);
+			this.pks.push(publicPem);
 			this.addresses.push(address);
 		}
-		return null;
+		return true;
 	}
 }
 
@@ -131,7 +158,7 @@ class NodeClass {
 	constructor(nickname, utxo, pset, txset) {
 		this.nickname = nickname;	// could be bank stock symbol
 		this.sk = 5;				// todo sk. keep secure
-		this.pk = 5; 				// todo something involving
+		this.pk = 5; 				// todo
 		// this.address = null;		// future for central bank to pay reward
 		this.utxo = utxo;			// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
@@ -201,13 +228,11 @@ class NodeClass {
 
 
 class User {
-	// todo refactor this constructor. need array of privkey,pubkey,address
-	// need constructor where can instantiate with passphrase
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
 		this.wallet = new Wallet(passphrase);
 
-		this.wallet.createAddresses(3, passphrase); // create new addresses
+		this.wallet.createAddresses(3, passphrase); // create some new addrs
 	}
 
 	// helper fxs to find NODECLASS from NODE
@@ -242,7 +267,7 @@ class User {
 				// note: thus won't break Promise.all
 				var query = User.checkUnspent(node, addrid, tx)
 					.then(vote => {
-						// console.log('query vote ' + vote);
+						// log('query vote ' + vote);
 
 						// note: paper says exit loop if any vote is a no
 						// note: but here we're ok if majority votes are yes
@@ -255,7 +280,7 @@ class User {
 						
 						return vote;
 					}).catch(err => {
-						console.log('query error ' + err);
+						log('query error ' + err);
 						return err;
 					});
 				
@@ -267,7 +292,7 @@ class User {
 		// future: put time limit on how long Promise.all waits
 		Promise.all(queries).then(results => {
 			// an array of nulls, votes, or errors
-			console.log('queries results ' + results);
+			log('queries results ' + results);
 			
 			// phase 2 commit
 			var addridSample = tx.outputs[0];
@@ -280,10 +305,10 @@ class User {
 
 				var commit = User.commitTx(node, tx, j, bundle)
 					.then(vote => {
-						// console.log('commit vote ' + vote);
+						// log('commit vote ' + vote);
 						return vote;	// could be null
 					}).catch(err => {
-						console.log('commit error ' + err);
+						log('commit error ' + err);
 						return err;
 					});
 
@@ -295,13 +320,13 @@ class User {
 			Promise.all(commits).then(results => {
 				// note: user can save this array to audit node later
 				// an array of nulls, votes, or errors
-				console.log('commits results ' + results);
+				log('commits results ' + results);
 			}).catch(err => {
-				console.log('commits error ' + err);
+				log('commits error ' + err);
 			});
 
 		}).catch(err => {
-			console.log('queries error ' + err);
+			log('queries error ' + err);
 		});
 	}
 }
