@@ -21,7 +21,13 @@ const codes = secrets.codes;
 // todo
 // key is NODE aka NODECLASS.NICKNAME
 // value is NODECLASS
-const getNodeClass = {};
+const mapNodeClass = {
+	'bac': null,
+	'cof': null,
+	'jpm': null,
+	'pnc': null,
+	'wfc': null
+};
 
 
 function log(x) { console.log(x); }
@@ -48,6 +54,22 @@ function hmac(data, key) {
 	return crypto.createHmac('sha256', key).update(data).digest('hex');	
 }
 
+// input string data and private key pem
+// return signature
+function sign(data, privatePem) {
+	const sign = crypto.createSign('RSA-SHA256');
+	sign.update(data);
+	return sign.sign(privatePem);	
+}
+
+// input string data, public key pem, signature
+// return true iff success
+function verify(data, publicPem, signature) {
+	const verify = crypto.createVerify('RSA-SHA256');
+	verify.update(data);
+	return verify.verify(publicPem, signature);
+}
+
 // input public key pem
 // return address as hex string
 function publicPemToAddress(publicPem) {
@@ -58,12 +80,6 @@ function publicPemToAddress(publicPem) {
 	const doublehash = hashAltBuffer(hashBuffer(N));
 	const checksum = hash(hashBuffer(doublehash)).substr(0, 8);
 	return doublehash + checksum;
-}
-
-// return array of nodes
-// todo: sort owners, so can search fast in checkUnspent
-function getOwners(addrid) {
-	
 }
 
 // input private key from cryptico
@@ -77,6 +93,12 @@ cryptico.skToHex = function(sk) {
     dict.e = 3; // cryptico enforces exponent of 3
     return dict;
 };
+
+// return array of nodes
+// todo: sort owners, so can search fast in checkUnspent
+function getOwners(addrid) {
+	
+}
 
 
 class Vote {
@@ -122,7 +144,7 @@ class Wallet {
 
 	// input N addresses to create, PASSPHRASE required
 	// create new sks, pks, and addresses
-	// return true if succeeds
+	// return true iff success
 	createAddresses(n, passphrase) {
 		if (hmac(passphrase, codes.first) !== this.passphraseSafe)
 			return false;
@@ -154,7 +176,7 @@ class Wallet {
 // NODECLASS is the class verifying txs, is the commercial bank
 // NODECLASS.NICKNAME is what users understand as NODE
 class NodeClass {
-	constructor(nickname, utxo, pset, txset) {
+	constructor(nickname) {
 		this.nickname = nickname;	// bank stock symbol. must be unique
 		this.utxo = utxo;			// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
@@ -240,12 +262,12 @@ class User {
 	// helper fxs to find NODECLASS from NODE
 	// return promise of NODECLASS's vote
 	static checkUnspent(node, addrid, tx) {
-		const nodeClass = getNodeClass[node]; // todo replace with https req
+		const nodeClass = mapNodeClass[node]; // todo replace with https req
 											// shouldn't have access to nodecls
 		return nodeClass.checkUnspent(addrid, tx);
 	}
 	static commitTx(node, tx, j, bundle) {
-		const nodeClass = getNodeClass[node]; // todo replace with https req
+		const nodeClass = mapNodeClass[node]; // todo replace with https req
 		return nodeClass.commitTx(tx, j, bundle);
 	}
 
