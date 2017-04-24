@@ -28,25 +28,17 @@ function log(x) { console.log(x); }
 
 // input string or Buffer with hex encoding
 // return sha256 hash
-function hash(data) {
-	return crypto.createHash('sha256').update(data).digest('hex');
-}
+function hash(data) { return crypto.createHash('sha256').update(data).digest('hex'); }
 
 // return Buffer instead of hex string
-function hashBuffer(data) {
-    return crypto.createHash('sha256').update(data).digest();
-}
+function hashBuffer(data) { return crypto.createHash('sha256').update(data).digest(); }
 
 // return ripemd160 hash
-function hashAltBuffer(data) {
-    return crypto.createHash('ripemd160').update(data).digest('hex');
-}
+function hashAltBuffer(data) { return crypto.createHash('ripemd160').update(data).digest('hex'); }
 
 // input string data and key
 // return sha256 hmac
-function hmac(data, key) {
-	return crypto.createHmac('sha256', key).update(data).digest('hex');	
-}
+function hmac(data, key) { return crypto.createHmac('sha256', key).update(data).digest('hex'); }
 
 // input string data and private key pem
 // return signature
@@ -147,7 +139,7 @@ class Wallet {
 		for (var i = 0; i < n; i++) {
 			// deterministic private key
 			const seed = hmac(passphrase + (iInsert + i), codes.second);
-			const skSeeded = cryptico.generateRSAKey(seed, 2048);
+			const skSeeded = cryptico.generateRSAKey(seed, bitsRSA);
 
 			const sk = new NodeRSA();
 			// note: adds leading zeros to n,p,q,dmp1 during import
@@ -213,8 +205,8 @@ class User {
 						if (!vote)
 							return null;
 
-						if (!bundle[node])				// create key if empty
-							bundle[node] = {};
+						if (!bundle[node])
+							bundle[node] = {};				// create key
 						bundle[node][addrid.digest] = vote;	// add vote
 						
 						return vote;
@@ -281,8 +273,6 @@ class NodeClass {
 		this.pset = {};				// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
 		this.txset = [];			// array for sealing txs
-		// todo can calculate txset merkle root by
-		// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
 
 		const privateKey = new NodeRSA({b: bitsRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
@@ -349,6 +339,16 @@ class NodeClass {
 			}
 		});
 	}
+
+	// todo create lowlevel blocks every thousand txs
+	// todo can calculate txset merkle root by
+	// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
+
+	// need vars periodopened, periodclosed
+	// need to listen to cb broadcasts
+	// when periodclosed, don't gen lowlevel blocks
+	// begin again with new merkleroot when periodopen
+	// note that blocks pushed to cb in queue
 }
 
 
@@ -364,11 +364,34 @@ class CentralBank {
 		// this.wallet = new Wallet(passphrase); // gold deposits?
 		// this.wallet.createAddresses(3, passphrase);
 	}
+
+	// period should process every minute
+	// in future, 1 day
+
+	// every second
+		// if period finished
+			// notify nodes period ended
+
+		// check queue for lower blocks
+		// async: if any, validate them in order
+			// check signature
+			// regen hash with block data & node's previous lowlevel hash
+			// if all good, add lowlevel txset to highlevel txset
+			// make sure no duplicates
+			// update value of node's previous lowlevel hash
+
+		// if period finished
+			// detect double spending
+				// count # of each tx received from lowlevel blocks
+				// rmv those that didn't get committed by majority of owners
+			// finalize txset for the period
+			// gen and seal high level block
+			// notify nodes new period open. give them merkle root
+
 }
 
 
-// future remove some exports
-// add central bank class
+// future remove unnecessary exports
 module.exports.nodeMap = nodeMap;
 module.exports.Vote = Vote;
 module.exports.Addrid = Addrid;

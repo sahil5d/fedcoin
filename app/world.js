@@ -25,6 +25,8 @@ fedcoin.nodeMap['COF'] = nc3;
 fedcoin.nodeMap['PNC'] = nc4;
 fedcoin.nodeMap['WFC'] = nc5;
 
-log(fedcoin.nodeMap)
+// log(fedcoin.nodeMap)
 
+const u1 = new fedcoin.User('batman', 'correct horse battery staple')
 
+// log(u1)
