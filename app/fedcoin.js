@@ -14,21 +14,14 @@ future = to do later
 const crypto = require('crypto');
 const cryptico = require('cryptico-js');
 const NodeRSA = require('node-rsa');
+var fastRoot = require('merkle-lib/fastRoot')
 
 const secrets = require('./secrets');
 const codes = secrets.codes;
 
-// todo
-// key is NODE aka NODECLASS.NICKNAME
-// value is NODECLASS
-const mapNodeClass = {
-	'bac': null,
-	'cof': null,
-	'jpm': null,
-	'pnc': null,
-	'wfc': null
-};
-
+// key NODE==NODECLASS.NICKNAME, value NODECLASS
+// modified by world.js when init nodeclasses
+const nodeMap = {};
 
 function log(x) { console.log(x); }
 
@@ -178,13 +171,15 @@ class Wallet {
 class NodeClass {
 	constructor(nickname) {
 		this.nickname = nickname;	// bank stock symbol. must be unique
-		this.utxo = utxo;			// object of unspent tx outputs
+		this.utxo = {};				// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
-		this.pset = pset;			// object of txs to catch double spending
+		this.pset = {};				// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
-		this.txset = txset;			// array for sealing txs
+		this.txset = [];			// array for sealing txs
+		// todo can calculate txset merkle root by
+		// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
 
-		const privateKey = new NodeRSA({b: 2048});
+		const privateKey = new NodeRSA({b: 512}); // future change to 2048
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
 
@@ -262,12 +257,12 @@ class User {
 	// helper fxs to find NODECLASS from NODE
 	// return promise of NODECLASS's vote
 	static checkUnspent(node, addrid, tx) {
-		const nodeClass = mapNodeClass[node]; // todo replace with https req
+		const nodeClass = nodeMap[node]; // todo replace with https req
 											// shouldn't have access to nodecls
 		return nodeClass.checkUnspent(addrid, tx);
 	}
 	static commitTx(node, tx, j, bundle) {
-		const nodeClass = mapNodeClass[node]; // todo replace with https req
+		const nodeClass = nodeMap[node]; // todo replace with https req
 		return nodeClass.commitTx(tx, j, bundle);
 	}
 
@@ -358,6 +353,7 @@ class User {
 
 // future remove some exports
 // add central bank class
+module.exports.nodeMap = nodeMap;
 module.exports.Vote = Vote;
 module.exports.Addrid = Addrid;
 module.exports.Tx = Tx;
