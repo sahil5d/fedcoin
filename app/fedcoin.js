@@ -14,7 +14,7 @@ future = to do later
 const crypto = require('crypto');
 const cryptico = require('cryptico-js');
 const NodeRSA = require('node-rsa');
-var fastRoot = require('merkle-lib/fastRoot')
+var fastRoot = require('merkle-lib/fastRoot');
 
 const secrets = require('./secrets');
 const codes = secrets.codes;
@@ -22,6 +22,7 @@ const codes = secrets.codes;
 // key NODE==NODECLASS.NICKNAME, value NODECLASS
 // modified by world.js when init nodeclasses
 const nodeMap = {};
+const bitsRSA = 512;	// future change to 2048
 
 function log(x) { console.log(x); }
 
@@ -166,87 +167,6 @@ class Wallet {
 }
 
 
-// NODECLASS is the class verifying txs, is the commercial bank
-// NODECLASS.NICKNAME is what users understand as NODE
-class NodeClass {
-	constructor(nickname) {
-		this.nickname = nickname;	// bank stock symbol. must be unique
-		this.utxo = {};				// object of unspent tx outputs
-									// key is ADDRID.DIGEST, val true=unspent
-		this.pset = {};				// object of txs to catch double spending
-									// key is ADDRID.DIGEST, val is tx
-		this.txset = [];			// array for sealing txs
-		// todo can calculate txset merkle root by
-		// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
-
-		const privateKey = new NodeRSA({b: 512}); // future change to 2048
-		this.sk = privateKey.exportKey('pkcs1-private');
-		this.pk = privateKey.exportKey('pkcs1-public');
-
-		// this.wallet = new Wallet(passphrase); // future to receive fed fees
-		// this.wallet.createAddresses(3, passphrase);
-	}
-
-	// todo
-	checkTx(tx) {
-		// total input val >= total output value
-		// input addrids point to valid txs
-		// sigs authorizing prev tx outputs are valid
-	}
-
-	// algorithm v.2
-	// input ADDRID, transaction TX
-	// return promise of node's vote
-	checkUnspent(addrid, tx) {
-		const digest = addrid.digest;
-
-		return new Promise((resolve, reject) => {
-			if (!this.checkTx(tx) || !getOwners(addrid).includes(this.pk)) { // todo refactor to whether this node !HAS the addrid
-				resolve(null);
-			} else if (this.utxo[digest] || this.pset[digest].digest === tx.digest) {
-				this.utxo[digest] = null;	// idempotent action
-				this.pset[digest] = tx;		// idempotent action
-				// todo resolve(new Vote(pk, sig));
-			} else {
-				resolve(null);
-			}
-		});
-	}
-
-	// todo
-	// algorithm v.3
-	// input transaction TX, period J, BUNDLE
-	// return promise of node's vote
-	commitTx(tx, j, bundle) {
-		return new Promise((resolve, reject) => {
-			const addridSample = tx.outputs[0];
-
-			if (!this.checkTx(tx) || !getOwners(addridSample).includes(this.pk)) { // todo refactor to whether this node !HAS the addridsample
-				resolve(null);
-			} else {
-				var allInputsValid = true;
-				// for loop todo
-
-
-					var nVotesOwners = null;
-					// for loop todo
-
-				if (!allInputsValid)
-					resolve(null);
-				else {
-					for (var i in tx.outputs) {
-						const addrid = tx.outputs[i];
-						this.utxo[addrid.digest] = true;
-					}
-					this.txset.push(tx);
-					// todo resolve
-				}
-			}
-		});
-	}
-}
-
-
 class User {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
@@ -351,6 +271,102 @@ class User {
 }
 
 
+// NODECLASS is the class verifying txs, is the commercial bank
+// NODECLASS.NICKNAME is what users understand as NODE
+class NodeClass {
+	constructor(nickname) {
+		this.nickname = nickname;	// bank stock symbol. must be unique
+		this.utxo = {};				// object of unspent tx outputs
+									// key is ADDRID.DIGEST, val true=unspent
+		this.pset = {};				// object of txs to catch double spending
+									// key is ADDRID.DIGEST, val is tx
+		this.txset = [];			// array for sealing txs
+		// todo can calculate txset merkle root by
+		// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
+
+		const privateKey = new NodeRSA({b: bitsRSA});
+		this.sk = privateKey.exportKey('pkcs1-private');
+		this.pk = privateKey.exportKey('pkcs1-public');
+
+		// this.wallet = new Wallet(passphrase); // future to receive fed fees
+		// this.wallet.createAddresses(3, passphrase);
+	}
+
+	// todo
+	checkTx(tx) {
+		// total input val >= total output value
+		// input addrids point to valid txs
+		// sigs authorizing prev tx outputs are valid
+	}
+
+	// algorithm v.2
+	// input ADDRID, transaction TX
+	// return promise of node's vote
+	checkUnspent(addrid, tx) {
+		const digest = addrid.digest;
+
+		return new Promise((resolve, reject) => {
+			if (!this.checkTx(tx) || !getOwners(addrid).includes(this.pk)) { // todo refactor to whether this node !HAS the addrid
+				resolve(null);
+			} else if (this.utxo[digest] || this.pset[digest].digest === tx.digest) {
+				this.utxo[digest] = null;	// idempotent action
+				this.pset[digest] = tx;		// idempotent action
+				// todo resolve(new Vote(pk, sig));
+			} else {
+				resolve(null);
+			}
+		});
+	}
+
+	// todo
+	// algorithm v.3
+	// input transaction TX, period J, BUNDLE
+	// return promise of node's vote
+	commitTx(tx, j, bundle) {
+		return new Promise((resolve, reject) => {
+			const addridSample = tx.outputs[0];
+
+			if (!this.checkTx(tx) || !getOwners(addridSample).includes(this.pk)) { // todo refactor to whether this node !HAS the addridsample
+				resolve(null);
+			} else {
+				var allInputsValid = true;
+				// for loop todo
+
+
+					var nVotesOwners = null;
+					// for loop todo
+
+				if (!allInputsValid)
+					resolve(null);
+				else {
+					for (var i in tx.outputs) {
+						const addrid = tx.outputs[i];
+						this.utxo[addrid.digest] = true;
+					}
+					this.txset.push(tx);
+					// todo resolve
+				}
+			}
+		});
+	}
+}
+
+
+// todo
+class CentralBank {
+	constructor(x) {
+		this.x = x;
+
+		const privateKey = new NodeRSA({b: bitsRSA});
+		this.sk = privateKey.exportKey('pkcs1-private');
+		this.pk = privateKey.exportKey('pkcs1-public');
+
+		// this.wallet = new Wallet(passphrase); // gold deposits?
+		// this.wallet.createAddresses(3, passphrase);
+	}
+}
+
+
 // future remove some exports
 // add central bank class
 module.exports.nodeMap = nodeMap;
@@ -358,5 +374,6 @@ module.exports.Vote = Vote;
 module.exports.Addrid = Addrid;
 module.exports.Tx = Tx;
 module.exports.Wallet = Wallet;
-module.exports.NodeClass = NodeClass;
 module.exports.User = User;
+module.exports.NodeClass = NodeClass;
+module.exports.CentralBank = CentralBank;
