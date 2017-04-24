@@ -4,8 +4,8 @@
 
 /*
 Notes
-pk is public key
 sk is secret private key
+pk is public key
 
 todo = to do now
 future = to do later
@@ -354,3 +354,13 @@ class User {
 		});
 	}
 }
+
+
+// future remove some exports
+// add central bank class
+module.exports.Vote = Vote;
+module.exports.Addrid = Addrid;
+module.exports.Tx = Tx;
+module.exports.Wallet = Wallet;
+module.exports.NodeClass = NodeClass;
+module.exports.User = User;
