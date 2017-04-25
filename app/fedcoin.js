@@ -73,25 +73,30 @@ function publicPemToAddress(publicPem) {
 cryptico.skToHex = function(sk) {
     const keys = ['n', 'd', 'p', 'q', 'dmp1', 'dmq1', 'coeff'];
     const dict = {};
-    keys.forEach(function(k){
+    keys.forEach(k => {
         dict[k] = Buffer.from(sk[k].toString(16), 'hex');
     });
     dict.e = 3; // cryptico enforces exponent of 3
     return dict;
 };
 
-// return array of nodes
-function getOwners(addrid) {
-	const substring = addrid.txdigest.subs(0, 4);	// shard map depends on tx
-	const decimal = parseInt(substring, 16);
-	const shard = decimal % nShards;
-	return shardMap[shard];
+// input unique identifying string
+// output shard number it falls in
+function stringToShard(string) {
+	const decimal = parseInt(string.substr(0, 6), 16);
+	return decimal % nShards;
 }
 
-// input all NODECLASSES in the world
-// populate SHARDMAP by assigning each nodeclass to shard
-function populateShardMap(nodeclasses) {
-	// make sure owners are sorted. speeds up checkUnspent
+// input all NODES in the world
+// populate SHARDMAP by assigning each node to shard
+function populateShardMap(nodes) {
+	for (var i = 0; i < nShards; i++)
+		shardMap.push([]);
+	
+	nodes.forEach(n => {
+		const shard = stringToShard(hash(n));
+		shardMap[shard].push(n);
+	});
 }
 
 
@@ -108,6 +113,7 @@ class Addrid {
 		this.txdigest = tx.digest;			
 		this.index = index;		// index(address) in tx output
 		this.value = value;
+		this.shard = stringToShard(tx.digest);
 		this.digest = hash(tx.digest + index + value);
 	}
 
@@ -197,7 +203,7 @@ class User {
 		
 		for (var i in tx.inputs) {
 			const addrid = tx.inputs[i];
-			const nodes = getOwners(addrid);	// return array
+			const nodes = shardMap[addrid.shard];
 			
 			for (var ii in nodes) {
 				const node = nodes[ii];
@@ -237,7 +243,7 @@ class User {
 			
 			// phase 2 commit
 			const addridSample = tx.outputs[0];
-			const nodes = getOwners(addridSample);
+			const nodes = shardMap[addridSample.shard];
 			
 			const commits = [];			// list of commit promises
 
@@ -280,7 +286,7 @@ class User {
 // NODECLASS.NICKNAME is what users understand as NODE
 class NodeClass {
 	constructor(nickname) {
-		this.nickname = nickname;	// bank stock symbol. must be unique
+		this.nickname = nickname;	// must be unique. bank stock symbol?
 		this.utxo = {};				// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
 		this.pset = {};				// object of txs to catch double spending
@@ -290,6 +296,8 @@ class NodeClass {
 		const privateKey = new NodeRSA({b: bitsRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
+
+		this.shard = stringToShard(hash(nickname));
 
 		// this.wallet = new Wallet(passphrase); // future to receive fed fees
 		// this.wallet.createAddresses(3, passphrase);
@@ -309,7 +317,7 @@ class NodeClass {
 		const digest = addrid.digest;
 
 		return new Promise((resolve, reject) => {
-			if (!this.checkTx(tx) || !getOwners(addrid).includes(this.pk)) { // todo refactor to whether this node !HAS the addrid
+			if (!this.checkTx(tx) || this.shard !== addrid.shard) {
 				resolve(null);
 			} else if (this.utxo[digest] || this.pset[digest].digest === tx.digest) {
 				this.utxo[digest] = null;	// idempotent action
@@ -329,7 +337,7 @@ class NodeClass {
 		return new Promise((resolve, reject) => {
 			const addridSample = tx.outputs[0];
 
-			if (!this.checkTx(tx) || !getOwners(addridSample).includes(this.pk)) { // todo refactor to whether this node !HAS the addridsample
+			if (!this.checkTx(tx) || this.shard !== addridSample.shard) {
 				resolve(null);
 			} else {
 				var allInputsValid = true;
