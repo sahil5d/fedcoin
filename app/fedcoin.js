@@ -99,6 +99,17 @@ function populateShardMap(nodes) {
 	});
 }
 
+// simulate http request
+// this way USER needs no knowledge of the NODECLASS, just NODE
+class FakeHttp {
+	constructor() {}
+
+	broadcast(node, method, args) {
+		const nodeClass = nodeMap[node];
+		return nodeClass[method].apply(this, args);
+	}
+}
+
 
 class Vote {
 	constructor(publicKey, signature) {
@@ -180,16 +191,15 @@ class User {
 		this.wallet.createAddresses(3, passphrase); // create some new addrs
 	}
 
-	// helper fxs to find NODECLASS from NODE
-	// return promise of NODECLASS's vote
+	// input NODE for http request to nodeclass
+	// return promise of nodeclass's vote
 	static checkUnspent(node, addrid, tx) {
-		const nodeClass = nodeMap[node]; // todo replace with https req
-											// shouldn't have access to nodecls
-		return nodeClass.checkUnspent(addrid, tx);
+		const fake = new FakeHttp();
+		return fake.broadcast(node, 'checkUnspent', [addrid, tx]);
 	}
 	static commitTx(node, tx, j, bundle) {
-		const nodeClass = nodeMap[node]; // todo replace with https req
-		return nodeClass.commitTx(tx, j, bundle);
+		const fake = new FakeHttp();
+		return fake.broadcast(node, 'commitTx', [tx, j, bundle]);
 	}
 
 	// algorithm v.1
