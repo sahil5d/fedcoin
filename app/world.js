@@ -2,31 +2,26 @@
 
 // Sahil Gupta
 
-/*
-Notes
-*/
-
 const fedcoin = require('./fedcoin');
 
 function log(x) { console.log(x); }
 
-
-const v = new fedcoin.Vote('pppp', 'ssssss');
-
-// must instantiate nodeclasses first
+// first instantiate nodeclasses
 const nodes = ['FFX', 'EEX', 'CCX', 'DDX', 'AAX', 'BBX'];
 const nodeclasses = [];
-nodes.forEach(stock => {
-    var nc = new fedcoin.NodeClass(stock);
-    nodeclasses.push(nc);
-    fedcoin.nodeMap[stock] = nc;
+nodes.forEach(n => {
+	var nc = new fedcoin.NodeClass(n);
+	nodeclasses.push(nc);
+	fedcoin.nodeMap[n] = nc;
 });
 fedcoin.populateShardMap(nodes);
 
-// log(nodeclasses)
-// log(fedcoin.nodeMap)
-log(fedcoin.shardMap)
+// instantiate users
+const names = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'];
+const users = [];
+names.forEach(n => {
+	var u = new fedcoin.User(n, n + '123');
+	users.push(u);
+});
 
-// const u1 = new fedcoin.User('batman', 'correct horse battery staple')
-
-// log(u1)
+log(users)

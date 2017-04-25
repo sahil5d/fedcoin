@@ -45,7 +45,7 @@ function hmac(data, key) { return crypto.createHmac('sha256', key).update(data).
 function sign(data, privatePem) {
 	const sign = crypto.createSign('RSA-SHA256');
 	sign.update(data);
-	return sign.sign(privatePem);	
+	return sign.sign(privatePem);
 }
 
 // input string data, public key pem, signature
@@ -71,13 +71,17 @@ function publicPemToAddress(publicPem) {
 // input private key from cryptico
 // return key object with bigintegers converted to hex buffers
 cryptico.skToHex = function(sk) {
-    const keys = ['n', 'd', 'p', 'q', 'dmp1', 'dmq1', 'coeff'];
-    const dict = {};
-    keys.forEach(k => {
-        dict[k] = Buffer.from(sk[k].toString(16), 'hex');
-    });
-    dict.e = 3; // cryptico enforces exponent of 3
-    return dict;
+	const keys = ['n', 'd', 'p', 'q', 'dmp1', 'dmq1', 'coeff'];
+	const dict = {};
+	keys.forEach(k => {
+		// kludge prepend 0 if hex string has odd length
+		if (k === 'coeff' && (sk[k].toString(16).length % 2) !== 0)
+			dict[k] = Buffer.from('0'+sk[k].toString(16), 'hex');
+		else
+			dict[k] = Buffer.from(sk[k].toString(16), 'hex');
+	});
+	dict.e = 3;  // cryptico enforces exponent of 3
+	return dict;
 };
 
 // input unique identifying string
@@ -121,11 +125,11 @@ class Vote {
 
 class Addrid {
 	constructor(tx, index, value) {
-		this.txdigest = tx.digest;			
-		this.index = index;		// index(address) in tx output
+		this.txdigest = tx.digest;
+		this.index = index; // index(address) in tx output
 		this.value = value;
-		this.shard = stringToShard(tx.digest);
 		this.digest = hash(tx.digest + index + value);
+		this.shard = stringToShard(tx.digest);
 	}
 
 	toString() {
@@ -147,7 +151,7 @@ class Tx {
 class Wallet {
 	constructor(passphrase) {
 		this.passphraseSafe = hmac(passphrase, codes.first); // for security
-		this.index = 0;		// index of oldest unused address
+		this.index = 0; // index of oldest unused address
 		this.sks = [];
 		this.pks = [];
 		this.addresses = [];
@@ -208,8 +212,8 @@ class User {
 	// return nothing but log queries and commits
 	validateTx(tx, j) {
 		// phase 1 query
-		const bundle = {};						// bundle of votes
-		const queries = [];						// list of query promises
+		const bundle = {};		// bundle of votes
+		const queries = [];		// list of query promises
 		
 		for (var i in tx.inputs) {
 			const addrid = tx.inputs[i];
@@ -230,8 +234,8 @@ class User {
 							return null;
 
 						if (!bundle[node])
-							bundle[node] = {};				// create key
-						bundle[node][addrid.digest] = vote;	// add vote
+							bundle[node] = {}; // create key
+						bundle[node][addrid.digest] = vote; // add vote
 						
 						return vote;
 					}).catch(err => {
@@ -255,7 +259,7 @@ class User {
 			const addridSample = tx.outputs[0];
 			const nodes = shardMap[addridSample.shard];
 			
-			const commits = [];			// list of commit promises
+			const commits = []; // list of commit promises
 
 			for (var i in nodes) {
 				const node = nodes[i];
@@ -263,7 +267,7 @@ class User {
 				var commit = User.commitTx(node, tx, j, bundle)
 					.then(vote => {
 						// log('commit vote ' + vote);
-						return vote;	// could be null
+						return vote; // could be null
 					}).catch(err => {
 						log('commit error ' + err);
 						return err;
@@ -315,7 +319,7 @@ class NodeClass {
 
 	// todo
 	checkTx(tx) {
-		// total input val >= total output value
+		// total input val == total output value
 		// input addrids point to valid txs
 		// sigs authorizing prev tx outputs are valid
 	}
@@ -374,6 +378,14 @@ class NodeClass {
 	// todo create lowlevel blocks every thousand txs
 	// todo can calculate txset merkle root by
 	// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
+
+	// if epochdone(txsetsize == max) and periodopen
+		// epoch += 1
+		// do stuff like calculate H
+		// package lower block
+		// put on queue
+		// this.lastlowerblockhash = H
+		// refresh txset, mset, etc
 
 	// need vars periodopened, periodclosed
 	// need to listen to cb broadcasts
