@@ -14,15 +14,15 @@ future = to do later
 const crypto = require('crypto');
 const cryptico = require('cryptico-js');
 const NodeRSA = require('node-rsa');
-var fastRoot = require('merkle-lib/fastRoot');
+const fastRoot = require('merkle-lib/fastRoot');
 
 const secrets = require('./secrets');
 const codes = secrets.codes;
 
-// key NODE==NODECLASS.NICKNAME, value NODECLASS
-// modified by world.js when init nodeclasses
-const nodeMap = {};
+const nShards = 2;		// future change to 3
 const bitsRSA = 512;	// future change to 2048
+const nodeMap = {};		// see world.js. key NODE, value NODECLASS
+const shardMap = [];	// see world.js. index shard #, value [nodeclasses]
 
 function log(x) { console.log(x); }
 
@@ -81,9 +81,17 @@ cryptico.skToHex = function(sk) {
 };
 
 // return array of nodes
-// todo: sort owners, so can search fast in checkUnspent
 function getOwners(addrid) {
-	
+	const substring = addrid.txdigest.subs(0, 4);	// shard map depends on tx
+	const decimal = parseInt(substring, 16);
+	const shard = decimal % nShards;
+	return shardMap[shard];
+}
+
+// input all NODECLASSES in the world
+// populate SHARDMAP by assigning each nodeclass to shard
+function populateShardMap(nodeclasses) {
+	// make sure owners are sorted. speeds up checkUnspent
 }
 
 
@@ -195,13 +203,13 @@ class User {
 				const node = nodes[ii];
 				
 				// note: each query promise catches its own errors
-				// note: thus won't break Promise.all
+				// note: so won't break Promise.all (neither will null promise)
 				var query = User.checkUnspent(node, addrid, tx)
 					.then(vote => {
 						// log('query vote ' + vote);
 
 						// note: paper says exit loop if any vote is a no
-						// note: but here we're ok if majority votes are yes
+						// note: but here we just need majority votes yes
 						if (!vote)
 							return null;
 
@@ -224,6 +232,8 @@ class User {
 		Promise.all(queries).then(results => {
 			// an array of nulls, votes, or errors
 			log('queries results ' + results);
+
+			// todo check that majority of queries array isn't null
 			
 			// phase 2 commit
 			const addridSample = tx.outputs[0];
@@ -252,6 +262,9 @@ class User {
 				// note: user can save this array to audit node later
 				// an array of nulls, votes, or errors
 				log('commits results ' + results);
+
+				// todo check that majority of commits array isn't null
+
 			}).catch(err => {
 				log('commits error ' + err);
 			});
@@ -347,8 +360,9 @@ class NodeClass {
 	// need vars periodopened, periodclosed
 	// need to listen to cb broadcasts
 	// when periodclosed, don't gen lowlevel blocks
+	// but can still do queries/commits
 	// begin again with new merkleroot when periodopen
-	// note that blocks pushed to cb in queue
+	// note that blocks pushed to cb in queue. do it async
 }
 
 
@@ -384,6 +398,7 @@ class CentralBank {
 			// detect double spending
 				// count # of each tx received from lowlevel blocks
 				// rmv those that didn't get committed by majority of owners
+				// in other words, check that each tx was included in lowlevel blocks by majority of nodes mapped to each tx output address
 			// finalize txset for the period
 			// gen and seal high level block
 			// notify nodes new period open. give them merkle root
@@ -393,6 +408,8 @@ class CentralBank {
 
 // future remove unnecessary exports
 module.exports.nodeMap = nodeMap;
+module.exports.shardMap = shardMap;
+module.exports.populateShardMap = populateShardMap;
 module.exports.Vote = Vote;
 module.exports.Addrid = Addrid;
 module.exports.Tx = Tx;

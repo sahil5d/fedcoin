@@ -13,19 +13,22 @@ function log(x) { console.log(x); }
 
 const v = new fedcoin.Vote('pppp', 'ssssss');
 
-const nc1 = new fedcoin.NodeClass('BAC'),
-      nc2 = new fedcoin.NodeClass('JPM'),
-      nc3 = new fedcoin.NodeClass('COF'),
-      nc4 = new fedcoin.NodeClass('PNC'),
-      nc5 = new fedcoin.NodeClass('WFC');
+// must instantiate nodeclasses first
+const bankstocks = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF'];
+const nodeclasses = [];
+bankstocks.forEach(stock => {
+    var nc = new fedcoin.NodeClass(stock);
+    nodeclasses.push(nc);
+    fedcoin.nodeMap[stock] = nc;
 
-fedcoin.nodeMap['BAC'] = nc1;
-fedcoin.nodeMap['JPM'] = nc2;
-fedcoin.nodeMap['COF'] = nc3;
-fedcoin.nodeMap['PNC'] = nc4;
-fedcoin.nodeMap['WFC'] = nc5;
+});
 
-// log(fedcoin.nodeMap)
+fedcoin.populateShardMap(nodeclasses);
+
+log(nodeclasses)
+
+log(fedcoin.nodeMap)
+log(fedcoin.shardMap)
 
 const u1 = new fedcoin.User('batman', 'correct horse battery staple')
 
