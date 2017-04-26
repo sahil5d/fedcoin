@@ -20,6 +20,7 @@ const secrets = require('./secrets');
 const codes = secrets.codes;
 
 const FEW = 3;
+const HUND = 100;
 const NSHARDS = 2;		// future change to 3
 const BITSRSA = 512;	// future change to 2048
 const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
@@ -343,7 +344,7 @@ class Wallet {
 		}
 
 		if (this.spareAddressGroups.length < FEW)
-			this.createAddresses(FEW*2, passphrase);
+			this.createAddresses(FEW*FEW, passphrase);
 
 		return this.spareAddressGroups.shift();
 	}
@@ -394,7 +395,7 @@ class User {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
 		this.wallet = new Wallet(passphrase);
-		this.wallet.createAddresses(FEW, passphrase);
+		this.wallet.createAddresses(HUND, passphrase);
 	}
 
 	sendTx(tx, j) {
@@ -470,6 +471,25 @@ class NodeClass {
 						theNodeClass.utxo[addrid.digest] = true;
 					}
 					theNodeClass.txset.add(tx);
+
+					// todo for demo
+					// issue lowlevel block omitting mset
+					if (theNodeClass.txset.size >= HUND / 5) {
+						const txarr = Array.from(theNodeClass.txset);
+						const txHashBuffers = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
+						const rootHash = fastRoot(txHashBuffers, hashBuffer);
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$$$$$$$$$$$$')
+						// generateLowlevelBlock([rootHash, theNodeClass.txset]);
+						theNodeClass.txset.clear();
+					}
+
 					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
 				}
 			}
@@ -480,7 +500,7 @@ class NodeClass {
 	// future can calculate txset merkle root by
 	// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
 
-	// if epochdone(txsetsize == max) and periodopen
+	// if epochdone meaning (txsetsize == max) and periodopen
 		// epoch += 1
 		// do stuff like calculate H
 		// package lower block
