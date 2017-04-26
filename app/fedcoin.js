@@ -15,12 +15,12 @@ const crypto = require('crypto');
 const cryptico = require('cryptico-js');
 const NodeRSA = require('node-rsa');
 const fastRoot = require('merkle-lib/fastRoot');
-
+const blockchain = require('./blockchain');
 const secrets = require('./secrets');
 const codes = secrets.codes;
 
 const FEW = 3;
-const HUND = 100;
+const HUND = 50;
 const NSHARDS = 2;		// future change to 3
 const BITSRSA = 512;	// future change to 2048
 const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
@@ -425,6 +425,8 @@ class NodeClass {
 
 		this.wallet = new Wallet(passphrase); // to receive fed fees
 		this.wallet.createAddresses(FEW, passphrase);
+		// init blockchain
+		this.blockchain = new blockchain.Blockchain();
 	}
 
 	// algorithm v.2
@@ -477,22 +479,27 @@ class NodeClass {
 					if (theNodeClass.txset.size >= HUND / 5) {
 						const txarr = Array.from(theNodeClass.txset);
 						const txHashBuffers = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
-						const rootHash = fastRoot(txHashBuffers, hashBuffer);
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$$$$$$$$$$$$')
-						// generateLowlevelBlock([rootHash, theNodeClass.txset]);
+						const rootHash = fastRoot(txHashBuffers, hashBuffer).toString('hex');
+						console.log(theNodeClass.txset);
+						log(crypto.randomBytes(32).toString("hex"))
+						log(crypto.randomBytes(32).toString("hex"))	
+						log(crypto.randomBytes(32).toString("hex"))
+						log(crypto.randomBytes(32).toString("hex"))
+						log(crypto.randomBytes(32).toString("hex"))
+						log(crypto.randomBytes(32).toString("hex"))
+						log(crypto.randomBytes(32).toString("hex"))
+						log(crypto.randomBytes(32).toString("hex"))
+						// Add to blockchain
+						var nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, theNodeClass.txset]);
+						theNodeClass.blockchain.addBlock(nextBlock);
+						// Write blockchain to file
+						theNodeClass.blockchain.writeBlockChainToFile('blockchain' + theNodeClass.nickname+ '.txt');	
 						theNodeClass.txset.clear();
-					}
-
+					}									
 					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
 				}
 			}
+			
 		});
 	}
 

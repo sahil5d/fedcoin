@@ -3,6 +3,7 @@
 // Sahil Gupta
 
 const fedcoin = require('./fedcoin');
+const blockchain = require('./blockchain');
 
 const HUND = 100;
 
@@ -48,12 +49,12 @@ const nodeclasses = [];
 nodes.forEach(n => {
 	var passphrase = n + '123';
 	var nc = new fedcoin.NodeClass(n, passphrase);
+	nc.blockchain.printBlockChain();
 	nodeclasses.push(nc);
 	fedcoin.NODEMAP[n] = nc;
 	log('node ' + n + ' initiated')
 });
 fedcoin.populateShardMap(nodes);
-
 // log(fedcoin.SHARDMAP)
 
 
@@ -88,3 +89,4 @@ Fed.printMoney(HUND, fpass);
 log('fed reserve seeds users')
 fedFeedCycle(usersA);
 fedFeedCycle(usersB);
+
