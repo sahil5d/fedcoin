@@ -125,26 +125,33 @@ class Vote {
 
 
 class Addrid {
-	constructor(tx, index, value) {
+	constructor(tx, address, index, value) {
 		this.txdigest = tx.digest;
+		this.address = address;
 		this.index = index; // index(address) in tx output
 		this.value = value;
-		this.digest = hash(tx.digest + index + value);
-		this.shard = stringToShard(tx.digest);
-	}
-
-	toString() {
-		return this.txdigest + this.index + this.value;
+		this.digest = hash(tx.digest + address + index + value);
+		this.shard = stringToShard(tx.digest); // function of tx
 	}
 }
 
 
 class Tx {
-	constructor(inputs, outputs, value) {
-		this.inputs = inputs;	// array of addrids
-		this.outputs = outputs;	// array of addrids
+	// note: first arg is addrids, second arg is addresses
+	constructor(inAddrids, outAddresses, value) {
+		const inAddresses = [];
+		if (inAddrids)
+			inAddrids.forEach(ai => inAddresses.push(ai.address));
+
+		// digest depends on addresses, not addrids
+		this.digest = hash(inAddresses + outAddresses + value);
+
+		const outAddrids = [];
+		outAddresses.forEach((a, i) => outAddrids.push(new Addrid(this, a, i, value)));
+
+		this.inputs = inAddrids;
+		this.outputs = outAddrids;
 		this.value = value;
-		this.digest = hash(JSON.stringify(inputs+outputs+value));
 	}
 }
 
@@ -218,11 +225,12 @@ class User {
 		this.wallet.createAddresses(FEW, passphrase);
 	}
 
+	// static functions
 	// input NODE for http request to nodeclass
 	// return promise of nodeclass's vote
-	static checkUnspent(node, addrid, tx) {
+	static queryTx(node, addrid, tx) {
 		const fake = new FakeHttp();
-		return fake.broadcast(node, 'checkUnspent', [addrid, tx]);
+		return fake.broadcast(node, 'queryTx', [addrid, tx]);
 	}
 	static commitTx(node, tx, j, bundle) {
 		const fake = new FakeHttp();
@@ -233,10 +241,14 @@ class User {
 	// input transaction TX and period J
 	// BUNDLE is 2d object, BUNDLE[NODE][ADDRID.DIGEST] = VOTE
 	// return nothing but log queries and commits
-	validateTx(tx, j) {
+	sendTx(tx, j) {
 		// phase 1 query
 		const bundle = {};		// bundle of votes
-		const queries = [];		// list of query promises
+		const queries = [];		// list of all query promises
+
+		function notNullOrErr(vote) {
+			return vote !== null && !(v instanceof Error);
+		}
 		
 		for (var i in tx.inputs) {
 			const addrid = tx.inputs[i];
@@ -244,19 +256,16 @@ class User {
 			
 			for (var ii in nodes) {
 				const node = nodes[ii];
-				
 				// note: each query promise catches its own errors
 				// note: so won't break Promise.all (neither will null promise)
-				var query = User.checkUnspent(node, addrid, tx)
+				var query = User.queryTx(node, addrid, tx)
 					.then(vote => {
 						// log('query vote ' + vote);
-
 						if (!vote)
 							return null;
-
-						if (!bundle[node])
-							bundle[node] = {}; // create key
-						bundle[node][addrid.digest] = vote; // add vote
+						if (!bundle[node])					// if null, fill it
+							bundle[node] = {};
+						bundle[node][addrid.digest] = vote;	// add vote
 						
 						return vote;
 					}).catch(err => {
@@ -269,18 +278,22 @@ class User {
 		}
 		
 		// wait for all queries to finish
-		// future: put time limit on how long Promise.all waits
+		// future add time limit on Promise.all throughout code
 		Promise.all(queries).then(results => {
 			// an array of nulls, votes, or errors
 			log('queries results ' + results);
 
-			// todo check that majority of queries array isn't null
+			// local check that majority of votes are yes
+			const yesses = results.filter(notNullOrErr).length;
+			if (yesses <= results.length / 2) {
+				log('queries rejected');
+				return;
+			}
 			
 			// phase 2 commit
 			const addridSample = tx.outputs[0];
 			const nodes = SHARDMAP[addridSample.shard];
-			
-			const commits = []; // list of commit promises
+			const commits = []; // list of all commit promises
 
 			for (var i in nodes) {
 				const node = nodes[i];
@@ -297,15 +310,17 @@ class User {
 				commits.push(commit);
 			}
 
-			// wait for all commits to finish
-			// future: put time limit on how long Promise.all waits
 			Promise.all(commits).then(results => {
-				// note: user can save this array to audit node later
+				// RESULTS can be used as audit proof
 				// an array of nulls, votes, or errors
 				log('commits results ' + results);
 
-				// todo check that majority of commits array isn't null
-
+				// local check that majority of votes are yes
+				const yesses = results.filter(notNullOrErr).length;
+				if (yesses <= results.length / 2) {
+					log('commits rejected');
+					return;
+				}
 			}).catch(err => {
 				log('commits error ' + err);
 			});
@@ -348,7 +363,7 @@ class NodeClass {
 	// algorithm v.2
 	// input ADDRID, transaction TX
 	// return promise of node's vote
-	checkUnspent(addrid, tx) {
+	queryTx(addrid, tx) {
 		const digest = addrid.digest;
 
 		return new Promise((resolve, reject) => {
@@ -431,12 +446,14 @@ class CentralBank {
 		this.wallet.createAddresses(FEW, passphrase);
 	}
 
+	// central bank pays itself
 	printMoney(value, passphrase) {
-		const group = this.wallet.getNextAddressGroup(passphrase);
-		// todo
-		log(group);
+		const addressGroup = this.wallet.getNextAddressGroup(passphrase);
+		const tx = new Tx(null, [addressGroup.address], value);
+		// future save this tx in highlevel block
+		// todo need to copy all User functions like sendTx and upwards
+		log(tx);
 
-		// const tx = new Tx(null, outputs, value);
 	}
 
 

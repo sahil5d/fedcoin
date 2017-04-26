@@ -6,6 +6,7 @@ const fedcoin = require('./fedcoin');
 
 function log(x) { console.log(x); }
 
+/*
 // first instantiate nodeclasses
 const nodes = ['FFX', 'EEX', 'CCX', 'DDX', 'AAX', 'BBX'];
 const nodeclasses = [];
@@ -23,26 +24,19 @@ log(fedcoin.SHARDMAP)
 const names = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'];
 const users = [];
 names.forEach(n => {
-	var passphrase = n + '456';
+	var passphrase = n + '123';
 	var u = new fedcoin.User(n, passphrase);
 	users.push(u);
 });
 
-log(users[4].wallet.spareAddressGroup.length)
-users[4].wallet.getNextAddressGroup('Epsilon456')
-log(users[4].wallet.spareAddressGroup.length)
-users[4].wallet.getNextAddressGroup('Epsilon456')
-log(users[4].wallet.spareAddressGroup.length)
-log(users[4].wallet.spareAddressGroup)
-
-
 log(users)
+*/
 
+var fed = new fedcoin.CentralBank('fed', 'fed123')
+fed.printMoney(555, 'fed123')
 
+// wallet function for spending and receiving
 
-// function for spending and receiving
-
-// create central bank god
 // give it a printmoney function where it pays itself from nothing
 // put in highlevel block
 // and puts that money in right node's utxo
