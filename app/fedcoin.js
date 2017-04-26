@@ -121,16 +121,17 @@ function mainQueryTx(node, addrid, tx) {
 	const fake = new FakeHttp();
 	return fake.broadcast(node, 'queryTx', [addrid, tx]);
 }
-function mainCommitTx(node, tx, j, bundle) {
+function mainCommitTx(node, tx, j, bundle, isCentralBank) {
 	const fake = new FakeHttp();
-	return fake.broadcast(node, 'commitTx', [tx, j, bundle]);
+	return fake.broadcast(node, 'commitTx', [tx, j, bundle, isCentralBank]);
 }
 
 // algorithm v.1
-// input transaction TX, period J, className ('User', 'CentralBank')
+// input transaction TX, period J, isCentralBank
+// future replace isCentralBank with a signature of the CB. more secure
 // BUNDLE is 2d object, BUNDLE[NODE][ADDRID.DIGEST] = VOTE
 // return nothing but log queries and commits
-function mainSendTx(tx, j, className) { // todo use className
+function mainSendTx(tx, j, isCentralBank) {
 	// phase 1 query
 	const bundle = {};		// bundle of votes
 	const queries = [];		// list of all query promises
@@ -139,6 +140,7 @@ function mainSendTx(tx, j, className) { // todo use className
 		return vote !== null && !(vote instanceof Error);
 	}
 
+	// when central bank prints money, this loop skipped. no queries made
 	for (var i in tx.inputs) {
 		const addrid = tx.inputs[i];
 		const nodes = SHARDMAP[addrid.shard];
@@ -168,15 +170,18 @@ function mainSendTx(tx, j, className) { // todo use className
 
 	// wait for all queries to finish
 	// future add time limit on Promise.all throughout code
+	// this still executes when central bank prints money (queries===[])
 	Promise.all(queries).then(results => {
 		// an array of nulls, votes, or errors
 		log('queries results ' + results);
 
-		// local check that majority of votes are yes
-		const yesses = results.filter(notNullOrErr).length;
-		if (yesses <= results.length / 2) {
-			log('queries rejected');
-			return;
+		if (!isCentralBank) {
+			// local check that majority of votes are yes
+			const yesses = results.filter(notNullOrErr).length;
+			if (yesses <= results.length / 2) {
+				log('queries rejected');
+				return;
+			}
 		}
 
 		// phase 2 commit
@@ -187,7 +192,7 @@ function mainSendTx(tx, j, className) { // todo use className
 		for (var i in nodes) {
 			const node = nodes[i];
 
-			var commit = mainCommitTx(node, tx, j, bundle)
+			var commit = mainCommitTx(node, tx, j, bundle, isCentralBank)
 				.then(vote => {
 					// log('commit vote ' + vote);
 					return vote; // could be null
@@ -330,7 +335,7 @@ class User {
 	}
 
 	sendTx(tx, j) {
-		return mainSendTx(tx, j, this.constructor.name);
+		return mainSendTx(tx, j, false);
 	}
 }
 
@@ -356,16 +361,21 @@ class NodeClass {
 		this.wallet.createAddresses(FEW, passphrase);
 	}
 
-	// todo
 	checkTx(tx) {
-		// total input val == total output value
-		// input addrids point to valid txs
-		// sigs authorizing prev tx outputs are valid
+		var inVal = 0, outVal;
+		tx.inputs.forEach(ai => inVal += ai.value);
+		tx.outputs.forEach(ai => outVal += ai.value);
+		// todo
+		// 1 check input addrids point to valid txs
+		// 2 check sigs authorizing prev tx outputs are valid
+			// basically that the tx is signed?
+			// does this mean we need sigs on every tx?
 	}
 
 	// algorithm v.2
 	// input ADDRID, transaction TX
 	// return promise of node's vote
+	// central bank printing never runs here
 	queryTx(addrid, tx) {
 		const digest = addrid.digest;
 
@@ -384,9 +394,9 @@ class NodeClass {
 
 	// todo
 	// algorithm v.3
-	// input transaction TX, period J, BUNDLE
+	// input transaction TX, period J, BUNDLE, bool ISCENTRALBANK
 	// return promise of node's vote
-	commitTx(tx, j, bundle) {
+	commitTx(tx, j, bundle, isCentralBank) {
 		return new Promise((resolve, reject) => {
 			const addridSample = tx.outputs[0];
 
@@ -395,6 +405,7 @@ class NodeClass {
 			} else {
 				var allInputsValid = true;
 				// for loop todo
+				// use iscentralbank
 
 
 					var nVotesOwners = null;
@@ -414,8 +425,8 @@ class NodeClass {
 		});
 	}
 
-	// todo create lowlevel blocks every thousand txs
-	// todo can calculate txset merkle root by
+	// future create lowlevel blocks every thousand txs
+	// future can calculate txset merkle root by
 	// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
 
 	// if epochdone(txsetsize == max) and periodopen
@@ -435,7 +446,6 @@ class NodeClass {
 }
 
 
-// todo
 class CentralBank {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
@@ -450,7 +460,7 @@ class CentralBank {
 	}
 
 	sendTx(tx, j) {
-		return mainSendTx(tx, j, this.constructor.name);
+		return mainSendTx(tx, j, true);
 	}
 
 	// central bank pays itself
@@ -458,7 +468,7 @@ class CentralBank {
 		const addressGroup = this.wallet.getNextAddressGroup(passphrase);
 		const tx = new Tx(null, [addressGroup.address], value);
 		// future save this tx in highlevel block
-		// todo need to copy all User functions like sendTx and upwards
+		// todo sendTx
 		log(tx);
 
 	}
