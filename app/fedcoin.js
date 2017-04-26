@@ -187,8 +187,6 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 	Promise.all(queries).then(results => {
 		// an array of nulls, votes, or errors
 		// log('queries results ' + results);
-		log('queries results - tx ' + tx.digest.substr(0, 10) + ' - value ' + tx.value); // future change
-
 
 		if (!isCentralBankPrinting) {
 			// local check that majority of votes are yes
@@ -197,6 +195,10 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 				log('queries rejected');
 				return;
 			}
+
+			// future change
+			log('queries results - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value); 
+
 		}
 
 		// phase 2 commit
@@ -233,7 +235,8 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 			// reached success
 
 			// future change
-			log('commits all pass - tx ' + tx.digest.substr(0, 10) + ' - value ' + tx.value);
+			log('commits pass - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
+
 		}).catch(err => {
 			log('commits error ' + err);
 		});
