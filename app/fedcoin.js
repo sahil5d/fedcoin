@@ -19,10 +19,11 @@ const fastRoot = require('merkle-lib/fastRoot');
 const secrets = require('./secrets');
 const codes = secrets.codes;
 
-const nShards = 2;		// future change to 3
-const bitsRSA = 512;	// future change to 2048
-const nodeMap = {};		// see world.js. key NODE, value NODECLASS
-const shardMap = [];	// see world.js. index shard #, value [nodeclasses]
+const FEW = 3;
+const NSHARDS = 2;		// future change to 3
+const BITSRSA = 512;	// future change to 2048
+const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
+const SHARDMAP = [];	// see world.js. index shard #, value [nodeclasses]
 
 function log(x) { console.log(x); }
 
@@ -88,18 +89,18 @@ cryptico.skToHex = function(sk) {
 // output shard number it falls in
 function stringToShard(string) {
 	const decimal = parseInt(string.substr(0, 6), 16);
-	return decimal % nShards;
+	return decimal % NSHARDS;
 }
 
 // input all NODES in the world
 // populate SHARDMAP by assigning each node to shard
 function populateShardMap(nodes) {
-	for (var i = 0; i < nShards; i++)
-		shardMap.push([]);
+	for (var i = 0; i < NSHARDS; i++)
+		SHARDMAP.push([]);
 	
 	nodes.forEach(n => {
 		const shard = stringToShard(hash(n));
-		shardMap[shard].push(n);
+		SHARDMAP[shard].push(n);
 	});
 }
 
@@ -109,7 +110,7 @@ class FakeHttp {
 	constructor() {}
 
 	broadcast(node, method, args) {
-		const nodeClass = nodeMap[node];
+		const nodeClass = NODEMAP[node];
 		return nodeClass[method].apply(this, args);
 	}
 }
@@ -151,39 +152,61 @@ class Tx {
 class Wallet {
 	constructor(passphrase) {
 		this.passphraseSafe = hmac(passphrase, codes.first); // for security
-		this.index = 0; // index of oldest unused address
-		this.sks = [];
-		this.pks = [];
-		this.addresses = [];
+		
+		this.addressCount = 0;
+
+		// arrays of {sk: value, pk: value, address: value}
+		this.spareAddressGroup = [];	// queue
+		this.usedAddressGroup = [];		// list
+		this.richAddressGroup = [];		// queue
 	}
 
 	// input N addresses to create, PASSPHRASE required
 	// create new sks, pks, and addresses
 	// return true iff success
 	createAddresses(n, passphrase) {
-		if (hmac(passphrase, codes.first) !== this.passphraseSafe)
+		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+			log('invalid passphrase');
 			return false;
+		}
 
-		const iInsert = this.addresses.length;
 		for (var i = 0; i < n; i++) {
 			// deterministic private key
-			const seed = hmac(passphrase + (iInsert + i), codes.second);
-			const skSeeded = cryptico.generateRSAKey(seed, bitsRSA);
+			const seed = hmac(passphrase + this.addressCount, codes.second);
+			const skDraft = cryptico.generateRSAKey(seed, BITSRSA);
 
 			const sk = new NodeRSA();
 			// note: adds leading zeros to n,p,q,dmp1 during import
-			sk.importKey(cryptico.skToHex(skSeeded), 'components');
+			sk.importKey(cryptico.skToHex(skDraft), 'components');
 			// log(sk.exportKey('components-private'))
 
 			const privatePem = sk.exportKey('pkcs1-private');
 			const publicPem = sk.exportKey('pkcs1-public');
-			const address = publicPemToAddress(publicPem);
+			const publicAddress = publicPemToAddress(publicPem);
 
-			this.sks.push(privatePem);
-			this.pks.push(publicPem);
-			this.addresses.push(address);
+			this.spareAddressGroup.push({
+				sk: privatePem,
+				pk: publicPem,
+				address: publicAddress
+			});
+
+			this.addressCount += 1;
 		}
 		return true;
+	}
+
+	// if running low on spare addresses, create some
+	// return oldest spare {sk, pk, address}
+	getNextAddressGroup(passphrase) {
+		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+			log('invalid passphrase');
+			return false;
+		}
+
+		if (this.spareAddressGroup.length < FEW)
+			this.createAddresses(FEW*2, passphrase);
+
+		return this.spareAddressGroup.shift();
 	}
 }
 
@@ -192,7 +215,7 @@ class User {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
 		this.wallet = new Wallet(passphrase);
-		this.wallet.createAddresses(3, passphrase); // create some new addrs
+		this.wallet.createAddresses(FEW, passphrase);
 	}
 
 	// input NODE for http request to nodeclass
@@ -217,7 +240,7 @@ class User {
 		
 		for (var i in tx.inputs) {
 			const addrid = tx.inputs[i];
-			const nodes = shardMap[addrid.shard];
+			const nodes = SHARDMAP[addrid.shard];
 			
 			for (var ii in nodes) {
 				const node = nodes[ii];
@@ -228,8 +251,6 @@ class User {
 					.then(vote => {
 						// log('query vote ' + vote);
 
-						// note: paper says exit loop if any vote is a no
-						// note: but here we just need majority votes yes
 						if (!vote)
 							return null;
 
@@ -257,7 +278,7 @@ class User {
 			
 			// phase 2 commit
 			const addridSample = tx.outputs[0];
-			const nodes = shardMap[addridSample.shard];
+			const nodes = SHARDMAP[addridSample.shard];
 			
 			const commits = []; // list of commit promises
 
@@ -299,7 +320,7 @@ class User {
 // NODECLASS is the class verifying txs, is the commercial bank
 // NODECLASS.NICKNAME is what users understand as NODE
 class NodeClass {
-	constructor(nickname) {
+	constructor(nickname, passphrase) {
 		this.nickname = nickname;	// must be unique. bank stock symbol?
 		this.utxo = {};				// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
@@ -307,14 +328,14 @@ class NodeClass {
 									// key is ADDRID.DIGEST, val is tx
 		this.txset = [];			// array for sealing txs
 
-		const privateKey = new NodeRSA({b: bitsRSA});
+		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
 
 		this.shard = stringToShard(hash(nickname));
 
-		// this.wallet = new Wallet(passphrase); // future to receive fed fees
-		// this.wallet.createAddresses(3, passphrase);
+		this.wallet = new Wallet(passphrase); // to receive fed fees
+		this.wallet.createAddresses(FEW, passphrase);
 	}
 
 	// todo
@@ -398,16 +419,26 @@ class NodeClass {
 
 // todo
 class CentralBank {
-	constructor(x) {
-		this.x = x;
+	constructor(nickname, passphrase) {
+		this.nickname = nickname;
+		this.txset = [];
 
-		const privateKey = new NodeRSA({b: bitsRSA});
+		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
 
-		// this.wallet = new Wallet(passphrase); // gold deposits?
-		// this.wallet.createAddresses(3, passphrase);
+		this.wallet = new Wallet(passphrase); // to pay nodes/users
+		this.wallet.createAddresses(FEW, passphrase);
 	}
+
+	printMoney(value, passphrase) {
+		const group = this.wallet.getNextAddressGroup(passphrase);
+		// todo
+		log(group);
+
+		// const tx = new Tx(null, outputs, value);
+	}
+
 
 	// period should process every minute
 	// in future, 1 day
@@ -437,8 +468,8 @@ class CentralBank {
 
 
 // future remove unnecessary exports
-module.exports.nodeMap = nodeMap;
-module.exports.shardMap = shardMap;
+module.exports.NODEMAP = NODEMAP;
+module.exports.SHARDMAP = SHARDMAP;
 module.exports.populateShardMap = populateShardMap;
 module.exports.Vote = Vote;
 module.exports.Addrid = Addrid;

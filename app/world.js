@@ -10,18 +10,43 @@ function log(x) { console.log(x); }
 const nodes = ['FFX', 'EEX', 'CCX', 'DDX', 'AAX', 'BBX'];
 const nodeclasses = [];
 nodes.forEach(n => {
-	var nc = new fedcoin.NodeClass(n);
+	var passphrase = n + '123';
+	var nc = new fedcoin.NodeClass(n, passphrase);
 	nodeclasses.push(nc);
-	fedcoin.nodeMap[n] = nc;
+	fedcoin.NODEMAP[n] = nc;
 });
 fedcoin.populateShardMap(nodes);
+
+log(fedcoin.SHARDMAP)
 
 // instantiate users
 const names = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'];
 const users = [];
 names.forEach(n => {
-	var u = new fedcoin.User(n, n + '123');
+	var passphrase = n + '456';
+	var u = new fedcoin.User(n, passphrase);
 	users.push(u);
 });
 
+log(users[4].wallet.spareAddressGroup.length)
+users[4].wallet.getNextAddressGroup('Epsilon456')
+log(users[4].wallet.spareAddressGroup.length)
+users[4].wallet.getNextAddressGroup('Epsilon456')
+log(users[4].wallet.spareAddressGroup.length)
+log(users[4].wallet.spareAddressGroup)
+
+
 log(users)
+
+
+
+// function for spending and receiving
+
+// create central bank god
+// give it a printmoney function where it pays itself from nothing
+// put in highlevel block
+// and puts that money in right node's utxo
+// send that money to user through pay function
+// fake broadcast
+// user then needs function to help it receive money
+// that transaction gets validated like any other
