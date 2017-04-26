@@ -104,6 +104,18 @@ function populateShardMap(nodes) {
 	});
 }
 
+// need to check if central bank passing in empty tx.inputs
+function checkTx(tx) {
+	return true; // future fix
+	var inVal = 0, outVal = 0;
+	tx.inputs.forEach(ai => inVal += ai.value);
+	tx.outputs.forEach(ai => outVal += ai.value);
+	// 1 check input addrids point to valid txs
+	// 2 check sigs authorizing prev tx outputs are valid
+		// basically that the tx is signed?
+		// does this mean we need sigs on every tx?
+}
+
 // simulate http request
 // this way USER needs no knowledge of the NODECLASS, just NODE
 class FakeHttp {
@@ -111,6 +123,7 @@ class FakeHttp {
 
 	broadcast(node, method, args) {
 		const nodeClass = NODEMAP[node];
+		args.push(nodeClass); // so has access to 'this'. future
 		return nodeClass[method].apply(this, args);
 	}
 }
@@ -121,17 +134,17 @@ function mainQueryTx(node, addrid, tx) {
 	const fake = new FakeHttp();
 	return fake.broadcast(node, 'queryTx', [addrid, tx]);
 }
-function mainCommitTx(node, tx, j, bundle, isCentralBank) {
+function mainCommitTx(node, tx, j, bundle, isCentralBankPrinting) {
 	const fake = new FakeHttp();
-	return fake.broadcast(node, 'commitTx', [tx, j, bundle, isCentralBank]);
+	return fake.broadcast(node, 'commitTx', [tx, j, bundle, isCentralBankPrinting]);
 }
 
 // algorithm v.1
-// input transaction TX, period J, isCentralBank
-// future replace isCentralBank with a signature of the CB. more secure
+// input transaction TX, period J, isCentralBankPrinting
+// future replace isCentralBankPrinting with a signature of the CB. more secure
 // BUNDLE is 2d object, BUNDLE[NODE][ADDRID.DIGEST] = VOTE
 // return nothing but log queries and commits
-function mainSendTx(tx, j, isCentralBank) {
+function mainSendTx(tx, j, isCentralBankPrinting) {
 	// phase 1 query
 	const bundle = {};		// bundle of votes
 	const queries = [];		// list of all query promises
@@ -151,7 +164,7 @@ function mainSendTx(tx, j, isCentralBank) {
 			// note: so won't break Promise.all (neither will null promise)
 			var query = mainQueryTx(node, addrid, tx)
 				.then(vote => {
-					// log('query vote ' + vote);
+					log('query vote - node ' + node); // future log VOTE also
 					if (!vote)
 						return null;
 					if (!bundle[node])					// if null, fill it
@@ -173,9 +186,11 @@ function mainSendTx(tx, j, isCentralBank) {
 	// this still executes when central bank prints money (queries===[])
 	Promise.all(queries).then(results => {
 		// an array of nulls, votes, or errors
-		log('queries results ' + results);
+		// log('queries results ' + results);
+		log('queries results - tx ' + tx.digest.substr(0, 10) + ' - value ' + tx.value); // future change
 
-		if (!isCentralBank) {
+
+		if (!isCentralBankPrinting) {
 			// local check that majority of votes are yes
 			const yesses = results.filter(notNullOrErr).length;
 			if (yesses <= results.length / 2) {
@@ -191,10 +206,9 @@ function mainSendTx(tx, j, isCentralBank) {
 
 		for (var i in nodes) {
 			const node = nodes[i];
-
-			var commit = mainCommitTx(node, tx, j, bundle, isCentralBank)
+			var commit = mainCommitTx(node, tx, j, bundle, isCentralBankPrinting)
 				.then(vote => {
-					// log('commit vote ' + vote);
+					log('commit vote - node ' + node); // future log VOTE also
 					return vote; // could be null
 				}).catch(err => {
 					log('commit error ' + err);
@@ -207,7 +221,7 @@ function mainSendTx(tx, j, isCentralBank) {
 		Promise.all(commits).then(results => {
 			// RESULTS can be used as audit proof
 			// an array of nulls, votes, or errors
-			log('commits results ' + results);
+			// log('commits results ' + results + tx.value);
 
 			// local check that majority of votes are yes
 			const yesses = results.filter(notNullOrErr).length;
@@ -215,6 +229,11 @@ function mainSendTx(tx, j, isCentralBank) {
 				log('commits rejected');
 				return;
 			}
+
+			// reached success
+
+			// future change
+			log('commits all pass - tx ' + tx.digest.substr(0, 10) + ' - value ' + tx.value);
 		}).catch(err => {
 			log('commits error ' + err);
 		});
@@ -271,10 +290,10 @@ class Wallet {
 		
 		this.addressCount = 0;
 
-		// arrays of {sk: value, pk: value, address: value}
-		this.spareAddressGroup = [];	// queue
-		this.usedAddressGroup = [];		// list
-		this.richAddressGroup = [];		// queue
+		// arrays of {sk: value, pk: value, address: value, addrid: value}
+		this.spareAddressGroups = [];	// queue
+		this.usedAddressGroups = [];		// list
+		this.richAddressGroups = [];		// queue
 	}
 
 	// input N addresses to create, PASSPHRASE required
@@ -300,10 +319,11 @@ class Wallet {
 			const publicPem = sk.exportKey('pkcs1-public');
 			const publicAddress = publicPemToAddress(publicPem);
 
-			this.spareAddressGroup.push({
+			this.spareAddressGroups.push({
 				sk: privatePem,
 				pk: publicPem,
-				address: publicAddress
+				address: publicAddress,
+				addrid: null
 			});
 
 			this.addressCount += 1;
@@ -312,18 +332,58 @@ class Wallet {
 	}
 
 	// if running low on spare addresses, create some
-	// return oldest spare {sk, pk, address}
-	getNextAddressGroup(passphrase) {
+	// return oldest spare address group
+	getSpareAddressGroup(passphrase) {
 		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
-		if (this.spareAddressGroup.length < FEW)
+		if (this.spareAddressGroups.length < FEW)
 			this.createAddresses(FEW*2, passphrase);
 
-		return this.spareAddressGroup.shift();
+		return this.spareAddressGroups.shift();
 	}
+
+	// return oldest rich address group
+	getRichAddressGroup(passphrase) {
+		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+			log('invalid passphrase');
+			return false;
+		}
+
+		if (this.richAddressGroups.length === 0) // no funds
+			return null;
+
+		return this.richAddressGroups.shift();
+	}
+
+	// add successful tx array of ADDRESSGROUPS to RICHADDRESSGROUP
+	// each ADDRESSGROUP now has non-null addrid field
+	addRichAddressGroups(addressGroups, passphrase) {
+		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+			log('invalid passphrase');
+			return false;
+		}
+
+		Array.prototype.push.apply(this.richAddressGroups, addressGroups);
+
+		return true;
+	}
+
+	// add successful tx array of ADDRESSGROUPS to USEDADDRESSGROUP
+	addUsedAddressGroups(addressGroups, passphrase) {
+		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+			log('invalid passphrase');
+			return false;
+		}
+
+		Array.prototype.push.apply(this.usedAddressGroups, addressGroups);
+
+		return true;
+	}
+
+
 }
 
 
@@ -344,12 +404,14 @@ class User {
 // NODECLASS.NICKNAME is what users understand as NODE
 class NodeClass {
 	constructor(nickname, passphrase) {
+		var self = this;
+
 		this.nickname = nickname;	// must be unique. bank stock symbol?
 		this.utxo = {};				// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
 		this.pset = {};				// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
-		this.txset = [];			// array for sealing txs
+		this.txset = new Set();		// set for sealing txs, all contents unique
 
 		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
@@ -361,65 +423,51 @@ class NodeClass {
 		this.wallet.createAddresses(FEW, passphrase);
 	}
 
-	checkTx(tx) {
-		var inVal = 0, outVal;
-		tx.inputs.forEach(ai => inVal += ai.value);
-		tx.outputs.forEach(ai => outVal += ai.value);
-		// todo
-		// 1 check input addrids point to valid txs
-		// 2 check sigs authorizing prev tx outputs are valid
-			// basically that the tx is signed?
-			// does this mean we need sigs on every tx?
-	}
-
 	// algorithm v.2
 	// input ADDRID, transaction TX
 	// return promise of node's vote
-	// central bank printing never runs here
-	queryTx(addrid, tx) {
+	// whenc central banks prints money, won't get called
+	queryTx(addrid, tx, theNodeClass) {
 		const digest = addrid.digest;
 
 		return new Promise((resolve, reject) => {
-			if (!this.checkTx(tx) || this.shard !== addrid.shard) {
+			if (!checkTx(tx) || theNodeClass.shard !== addrid.shard) {
 				resolve(null);
-			} else if (this.utxo[digest] || this.pset[digest].digest === tx.digest) {
-				this.utxo[digest] = null;	// idempotent action
-				this.pset[digest] = tx;		// idempotent action
-				// todo resolve(new Vote(pk, sig));
+			} else if (theNodeClass.utxo[digest] || theNodeClass.pset[digest].digest === tx.digest) {
+				theNodeClass.utxo[digest] = null;	// idempotent action
+				theNodeClass.pset[digest] = tx;		// idempotent action
+				resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
 			} else {
 				resolve(null);
 			}
 		});
 	}
 
-	// todo
 	// algorithm v.3
-	// input transaction TX, period J, BUNDLE, bool ISCENTRALBANK
+	// input transaction TX, period J, BUNDLE, bool ISCENTRALBANKPRINTING
 	// return promise of node's vote
-	commitTx(tx, j, bundle, isCentralBank) {
+	commitTx(tx, j, bundle, isCentralBankPrinting, theNodeClass) {
 		return new Promise((resolve, reject) => {
 			const addridSample = tx.outputs[0];
 
-			if (!this.checkTx(tx) || this.shard !== addridSample.shard) {
+			if (!checkTx(tx) || theNodeClass.shard !== addridSample.shard) {
 				resolve(null);
 			} else {
 				var allInputsValid = true;
 				// for loop todo
-				// use iscentralbank
-
+				// use isCentralBankPrinting
 
 					var nVotesOwners = null;
-					// for loop todo
-
-				if (!allInputsValid)
+					// for loop
+				if (!allInputsValid) {
 					resolve(null);
-				else {
+				} else {
 					for (var i in tx.outputs) {
 						const addrid = tx.outputs[i];
-						this.utxo[addrid.digest] = true;
+						theNodeClass.utxo[addrid.digest] = true;
 					}
-					this.txset.push(tx);
-					// todo resolve
+					theNodeClass.txset.add(tx);
+					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
 				}
 			}
 		});
@@ -449,28 +497,32 @@ class NodeClass {
 class CentralBank {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
-		this.txset = [];
+		this.txset = new Set();
 
 		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
 
+		this.j = 0; // period number
+
 		this.wallet = new Wallet(passphrase); // to pay nodes/users
 		this.wallet.createAddresses(FEW, passphrase);
 	}
 
-	sendTx(tx, j) {
-		return mainSendTx(tx, j, true);
+	sendTx(tx, j, isPrinting) {
+		return mainSendTx(tx, j, isPrinting);
 	}
 
 	// central bank pays itself
+	// todo cleanup
 	printMoney(value, passphrase) {
-		const addressGroup = this.wallet.getNextAddressGroup(passphrase);
-		const tx = new Tx(null, [addressGroup.address], value);
+		const ag = this.wallet.getSpareAddressGroup(passphrase);
+		const tx = new Tx(null, [ag.address], value);
 		// future save this tx in highlevel block
-		// todo sendTx
-		log(tx);
-
+		this.sendTx(tx, this.j, true);
+		// todo need something here to know that tx was success. a promise.
+		ag.addrid = tx.outputs[0];
+		this.wallet.addRichAddressGroups([ag], passphrase);
 	}
 
 
