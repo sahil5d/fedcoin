@@ -37,8 +37,6 @@ fed.printMoney(555, 'fed123')
 
 // wallet function for spending and receiving
 
-// give it a printmoney function where it pays itself from nothing
-// put in highlevel block
 // and puts that money in right node's utxo
 // send that money to user through pay function
 // fake broadcast
