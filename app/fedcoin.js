@@ -311,6 +311,7 @@ class Wallet {
 
 		for (var i = 0; i < n; i++) {
 			// deterministic private key
+			// todo need to add more randomness else many wallets will have same pks and sks
 			const seed = hmac(passphrase + this.addressCount, codes.second);
 			const skDraft = cryptico.generateRSAKey(seed, BITSRSA);
 
@@ -425,8 +426,8 @@ class NodeClass {
 
 		this.wallet = new Wallet(passphrase); // to receive fed fees
 		this.wallet.createAddresses(FEW, passphrase);
-		// init blockchain
-		this.blockchain = new blockchain.Blockchain();
+
+		this.blockchain = new blockchain.Blockchain(); // init blockchain
 	}
 
 	// algorithm v.2
@@ -480,20 +481,20 @@ class NodeClass {
 						const txarr = Array.from(theNodeClass.txset);
 						const txHashBuffers = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
 						const rootHash = fastRoot(txHashBuffers, hashBuffer).toString('hex');
-						console.log(theNodeClass.txset);
-						log(crypto.randomBytes(32).toString("hex"))
-						log(crypto.randomBytes(32).toString("hex"))	
-						log(crypto.randomBytes(32).toString("hex"))
-						log(crypto.randomBytes(32).toString("hex"))
-						log(crypto.randomBytes(32).toString("hex"))
-						log(crypto.randomBytes(32).toString("hex"))
-						log(crypto.randomBytes(32).toString("hex"))
-						log(crypto.randomBytes(32).toString("hex"))
+
+						log(theNodeClass.txset);
+						log('$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$')
+						log('$$$$$$$$$$$$')
+
 						// Add to blockchain
-						var nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, theNodeClass.txset]);
+						const nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, theNodeClass.txset]);
 						theNodeClass.blockchain.addBlock(nextBlock);
 						// Write blockchain to file
-						theNodeClass.blockchain.writeBlockChainToFile('blockchain' + theNodeClass.nickname+ '.txt');	
+						theNodeClass.blockchain.writeBlockChainToFile('bc' + theNodeClass.nickname+ '.txt');
 						theNodeClass.txset.clear();
 					}									
 					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));

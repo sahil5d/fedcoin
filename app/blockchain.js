@@ -12,8 +12,6 @@ const NodeRSA = require('node-rsa');
 const fastRoot = require('merkle-lib/fastRoot');
 const secrets = require('./secrets')
 const express = require("express");
-const bodyParser = require('body-parser');
-const WebSocket = require("ws");
 const fs = require("fs");
 
 // Sahil's hash function
