@@ -1,11 +1,8 @@
-/*
- * Written (mostly) by Shreyas
- *
- * Inspired heavily by https://medium.com/@lhartikk/a-blockchain-in-200-lines-of-code-963cc1cc0e54return 
- * and https://github.com/lhartikk/naivechain/blob/master/main.js
- */
-
 "use strict";
+
+// Shreyas Ravishankar
+// inspired by https://github.com/lhartikk/naivechain
+
 const crypto = require('crypto');
 const cryptico = require('cryptico-js');
 const NodeRSA = require('node-rsa');
@@ -14,10 +11,8 @@ const secrets = require('./secrets')
 const express = require("express");
 const fs = require("fs");
 
-// Sahil's hash function
 function hash(data) { return crypto.createHash('sha256').update(data).digest('hex'); }
 
-// Block data structure
 class Block {
 	constructor(index, previousHash, timestamp, data, hash){
 		this.index = index;
@@ -28,7 +23,6 @@ class Block {
 	}
 };
 
-// Blockchain data structure
 class Blockchain {
 	constructor() {
 		this.blockchain = [this.generateGenesisBlock()];

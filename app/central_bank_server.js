@@ -1,3 +1,6 @@
+"use strict";
+
+// Shreyas Ravishankar
 
 /*
 // Store IP:PORT of mintettes as semi colon separated environment variable
