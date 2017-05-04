@@ -7,6 +7,10 @@ Notes
 sk is secret private key
 pk is public key
 
+nickname-passphrase pair must be universally unique.
+ensure minimum complexity of user passphrases
+keygen depends on it
+
 todo = to do now
 future = to do later
 */
@@ -38,7 +42,7 @@ function hashBuffer(data) { return crypto.createHash('sha256').update(data).dige
 // return ripemd160 hash
 function hashAltBuffer(data) { return crypto.createHash('ripemd160').update(data).digest('hex'); }
 
-// input string data and key
+// input string data and key. key often used as salt
 // return sha256 hmac
 function hmac(data, key) { return crypto.createHmac('sha256', key).update(data).digest('hex'); }
 
@@ -89,7 +93,8 @@ cryptico.skToHex = function(sk) {
 // input unique identifying string
 // output shard number it falls in
 function stringToShard(string) {
-	const decimal = parseInt(string.substr(0, 6), 16);
+	const sample = 4;
+	const decimal = parseInt(string.substr(0, sample), 16);
 	return decimal % NSHARDS;
 }
 
@@ -119,6 +124,7 @@ function checkTx(tx) {
 
 // simulate http request
 // this way USER needs no knowledge of the NODECLASS, just NODE
+// future
 class FakeHttp {
 	constructor() {}
 
@@ -144,7 +150,7 @@ function mainCommitTx(node, tx, j, bundle, isCentralBankPrinting) {
 // input transaction TX, period J, isCentralBankPrinting
 // future replace isCentralBankPrinting with a signature of the CB. more secure
 // BUNDLE is 2d object, BUNDLE[NODE][ADDRID.DIGEST] = VOTE
-// return nothing but log queries and commits
+// return promise of whether tx is a success. logs queries and commits
 function mainSendTx(tx, j, isCentralBankPrinting) {
 	// phase 1 query
 	const bundle = {};		// bundle of votes
@@ -185,7 +191,8 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 	// wait for all queries to finish
 	// future add time limit on Promise.all throughout code
 	// this still executes when central bank prints money (queries===[])
-	Promise.all(queries).then(results => {
+	return Promise.all(queries)
+	.then(results => {
 		// an array of nulls, votes, or errors
 		// log('queries results ' + results);
 
@@ -194,12 +201,11 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 			const yesses = results.filter(notNullOrErr).length;
 			if (yesses <= results.length / 2) {
 				log('queries rejected');
-				return;
+				return false;
 			}
 
 			// future change
-			log('queries results - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value); 
-
+			log('queries results - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
 		}
 
 		// phase 2 commit
@@ -221,7 +227,8 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 			commits.push(commit);
 		}
 
-		Promise.all(commits).then(results => {
+		return Promise.all(commits)
+		.then(results => {
 			// RESULTS can be used as audit proof
 			// an array of nulls, votes, or errors
 			// log('commits results ' + results + tx.value);
@@ -230,7 +237,7 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 			const yesses = results.filter(notNullOrErr).length;
 			if (yesses <= results.length / 2) {
 				log('commits rejected');
-				return;
+				return false;
 			}
 
 			// reached success
@@ -238,12 +245,14 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 			// future change
 			log('commits pass - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
 
+			return true;
 		}).catch(err => {
 			log('commits error ' + err);
+			return false;
 		});
-
 	}).catch(err => {
 		log('queries error ' + err);
+		return false;
 	});
 }
 
@@ -289,30 +298,30 @@ class Tx {
 
 
 class Wallet {
-	constructor(passphrase) {
-		this.passphraseSafe = hmac(passphrase, codes.first); // for security
-		
+	constructor(nickname, passphrase) {
+		this.nickname = nickname; // nickname of user owner
+		this.passphraseSafe = hmac(passphrase, nickname); // nickname like salt
+
 		this.addressCount = 0;
 
 		// arrays of {sk: value, pk: value, address: value, addrid: value}
 		this.spareAddressGroups = [];	// queue
-		this.usedAddressGroups = [];		// list
-		this.richAddressGroups = [];		// queue
+		this.usedAddressGroups = [];	// list
+		this.richAddressGroups = [];	// queue
 	}
 
 	// input N addresses to create, PASSPHRASE required
 	// create new sks, pks, and addresses
 	// return true iff success
 	createAddresses(n, passphrase) {
-		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
 		for (var i = 0; i < n; i++) {
-			// deterministic private key
-			// todo need to add more randomness else many wallets will have same pks and sks
-			const seed = hmac(passphrase + this.addressCount, codes.second);
+			// deterministic private key, usign uppercase nickname as key
+			const seed = hmac(this.nickname + passphrase + this.addressCount, this.nickname.toUpperCase());
 			const skDraft = cryptico.generateRSAKey(seed, BITSRSA);
 
 			const sk = new NodeRSA();
@@ -339,7 +348,7 @@ class Wallet {
 	// if running low on spare addresses, create some
 	// return oldest spare address group
 	getSpareAddressGroup(passphrase) {
-		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
@@ -350,9 +359,10 @@ class Wallet {
 		return this.spareAddressGroups.shift();
 	}
 
+	// future accept value argument, returns as many richags as necessary
 	// return oldest rich address group
 	getRichAddressGroup(passphrase) {
-		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
@@ -366,25 +376,23 @@ class Wallet {
 	// add successful tx array of ADDRESSGROUPS to RICHADDRESSGROUP
 	// each ADDRESSGROUP now has non-null addrid field
 	addRichAddressGroups(addressGroups, passphrase) {
-		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
 		Array.prototype.push.apply(this.richAddressGroups, addressGroups);
-
 		return true;
 	}
 
 	// add successful tx array of ADDRESSGROUPS to USEDADDRESSGROUP
 	addUsedAddressGroups(addressGroups, passphrase) {
-		if (hmac(passphrase, codes.first) !== this.passphraseSafe) {
+		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
 		Array.prototype.push.apply(this.usedAddressGroups, addressGroups);
-
 		return true;
 	}
 
@@ -395,7 +403,7 @@ class Wallet {
 class User {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;
-		this.wallet = new Wallet(passphrase);
+		this.wallet = new Wallet(nickname, passphrase);
 		this.wallet.createAddresses(HUND, passphrase);
 	}
 
@@ -409,8 +417,6 @@ class User {
 // NODECLASS.NICKNAME is what users understand as NODE
 class NodeClass {
 	constructor(nickname, passphrase) {
-		var self = this;
-
 		this.nickname = nickname;	// must be unique. bank stock symbol?
 		this.utxo = {};				// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true=unspent
@@ -418,13 +424,13 @@ class NodeClass {
 									// key is ADDRID.DIGEST, val is tx
 		this.txset = new Set();		// set for sealing txs, all contents unique
 
-		const privateKey = new NodeRSA({b: BITSRSA});
+		const privateKey = new NodeRSA({b: BITSRSA}); // for signing and verifs
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
 
 		this.shard = stringToShard(hash(nickname));
 
-		this.wallet = new Wallet(passphrase); // to receive fed fees
+		this.wallet = new Wallet(nickname, passphrase); // to receive fed fees
 		this.wallet.createAddresses(FEW, passphrase);
 
 		this.blockchain = new blockchain.Blockchain(); // init blockchain
@@ -433,7 +439,7 @@ class NodeClass {
 	// algorithm v.2
 	// input ADDRID, transaction TX
 	// return promise of node's vote
-	// whenc central banks prints money, won't get called
+	// when central banks prints money, won't get called
 	queryTx(addrid, tx, theNodeClass) {
 		const digest = addrid.digest;
 
@@ -536,7 +542,7 @@ class CentralBank {
 
 		this.j = 0; // period number
 
-		this.wallet = new Wallet(passphrase); // to pay nodes/users
+		this.wallet = new Wallet(nickname, passphrase); // to pay nodes/users
 		this.wallet.createAddresses(FEW, passphrase);
 	}
 
@@ -546,14 +552,16 @@ class CentralBank {
 
 	// central bank pays itself
 	// todo cleanup
+	// return promise of whether printMoney a success
 	printMoney(value, passphrase) {
 		const ag = this.wallet.getSpareAddressGroup(passphrase);
 		const tx = new Tx(null, [ag.address], value);
 		// future save this tx in highlevel block
-		this.sendTx(tx, this.j, true);
-		// todo need something here to know that tx was success. a promise.
-		ag.addrid = tx.outputs[0];
-		this.wallet.addRichAddressGroups([ag], passphrase);
+		return this.sendTx(tx, this.j, true)
+		.then(success => {
+			ag.addrid = tx.outputs[0];
+			this.wallet.addRichAddressGroups([ag], passphrase);
+		});
 	}
 
 

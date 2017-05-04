@@ -1,14 +1,9 @@
 "use strict";
 
 // Shreyas Ravishankar
-// inspired by https://github.com/lhartikk/naivechain
+// based on https://github.com/lhartikk/naivechain
 
 const crypto = require('crypto');
-const cryptico = require('cryptico-js');
-const NodeRSA = require('node-rsa');
-const fastRoot = require('merkle-lib/fastRoot');
-const secrets = require('./secrets')
-const express = require("express");
 const fs = require("fs");
 
 function hash(data) { return crypto.createHash('sha256').update(data).digest('hex'); }
@@ -21,7 +16,7 @@ class Block {
 		this.data = data;
 		this.hash = hash;
 	}
-};
+}
 
 class Blockchain {
 	constructor() {
@@ -101,7 +96,7 @@ class Blockchain {
 				return console.log(err)
 			}
 			console.log('writeBlockChainToFile: successfully wrote to file blockchain.txt');
-	})};
+	})}
 }
 
 // Exporting modules for client
