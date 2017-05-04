@@ -25,8 +25,8 @@ const blockchain = require('./blockchain');
 
 const FEW = 3;
 const HUND = 50;
-const NSHARDS = 2;		// future change to 3
-const BITSRSA = 512;	// future change to 2048
+const NSHARDS = 2;		// todo change to 3. simple is 2
+const BITSRSA = 512;	// todo change to 2048. simple is 512
 const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
 const SHARDMAP = [];	// see world.js. index shard #, value [nodeclasses]
 
@@ -108,11 +108,13 @@ function populateShardMap(nodes) {
 		const shard = stringToShard(hash(n));
 		SHARDMAP[shard].push(n);
 	});
+
+	log('shards ' + JSON.stringify(SHARDMAP));
 }
 
-// need to check if central bank passing in empty tx.inputs
+// todo need check for iscentralbankprinting. tx.inputs will be null
 function checkTx(tx) {
-	return true; // future fix
+	return true;
 	var inVal = 0, outVal = 0;
 	tx.inputs.forEach(ai => inVal += ai.value);
 	tx.outputs.forEach(ai => outVal += ai.value);
@@ -124,7 +126,7 @@ function checkTx(tx) {
 
 // simulate http request
 // this way USER needs no knowledge of the NODECLASS, just NODE
-// future
+// future use servers
 class FakeHttp {
 	constructor() {}
 
@@ -171,12 +173,13 @@ function mainSendTx(tx, isCentralBankPrinting) {
 			// note: so won't break Promise.all (neither will null promise)
 			var query = mainQueryTx(node, addrid, tx)
 				.then(vote => {
-					log('query vote - node ' + node); // future log VOTE also
+					// log('vote is' + vote);
+					log('query vote - node ' + node);
 					if (!vote)
 						return null;
 					if (!bundle[node])					// if null, fill it
 						bundle[node] = {};
-					bundle[node][addrid.digest] = vote;	// add vote
+					bundle[node][addrid.digest] = vote; // add vote
 
 					return vote;
 				}).catch(err => {
@@ -204,8 +207,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 				return false;
 			}
 
-			// future change
-			log('queries results - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
+			log('queries pass - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
 		}
 
 		// phase 2 commit
@@ -217,7 +219,8 @@ function mainSendTx(tx, isCentralBankPrinting) {
 			const node = nodes[i];
 			var commit = mainCommitTx(node, tx, bundle, isCentralBankPrinting)
 				.then(vote => {
-					log('commit vote - node ' + node); // future log VOTE also
+					// log('vote is ' + vote);
+					log('commit vote - node ' + node);
 					return vote; // could be null
 				}).catch(err => {
 					log('commit error ' + err);
@@ -242,7 +245,6 @@ function mainSendTx(tx, isCentralBankPrinting) {
 
 			// reached success
 
-			// future change
 			log('commits pass - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
 
 			return true;
@@ -362,8 +364,8 @@ class Wallet {
 		return this.spareAGs.shift();
 	}
 
-	// future accept value argument, returns as many richags as necessary
 	// return oldest rich address group
+	// future accept value argument, returns as many richAGs as necessary
 	getRichAG(passphrase) {
 		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
@@ -428,13 +430,14 @@ class NodeClass {
 									// key is ADDRID.DIGEST, val is tx
 		this.txset = new Set();		// set for sealing txs, all contents unique
 
+		this.shard = stringToShard(hash(nickname));
+
 		this.j = 0;					// period number
 
+		// future update sks and pks every period
 		const privateKey = new NodeRSA({b: BITSRSA}); // for signing and verifs
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
-
-		this.shard = stringToShard(hash(nickname));
 
 		this.wallet = new Wallet(nickname, passphrase); // to receive fed fees
 		this.wallet.createAddresses(FEW, passphrase);
@@ -469,15 +472,36 @@ class NodeClass {
 		return new Promise((resolve, reject) => {
 			const addridSample = tx.outputs[0];
 
+			// future pass ISCENTRALBANKPRINTING into checkTx
 			if (!checkTx(tx) || theNodeClass.shard !== addridSample.shard) {
 				resolve(null);
 			} else {
 				var allInputsValid = true;
-				// for loop todo
-				// use isCentralBankPrinting
+				// if ISCENTRALBANKPRINTING loop will be skipped
+				for (var i in tx.inputs) {
+					const addrid = tx.inputs[i];
+					const nodes = SHARDMAP[addrid.shard];
+					var yesses = 0;
 
-					var nVotesOwners = null;
-					// for loop
+					for (var ii in nodes) {
+						const node = nodes[ii];
+						if (bundle[node] && bundle[node][addrid.digest]) {
+							const vote = bundle[node][addrid.digest];
+							// future line 9 algo 3
+							// use authorizedNodes
+								// if thenodeclass.pk is in authorizednodes.map(arr=>arr[0]) // this should be saved for speed
+							// if good to go
+							// yesses += 1
+						}
+					}
+
+					// if (yesses <= nodes.length / 2) {
+					// 	log('queries invalid, commit rejected');
+					// 	allInputsValid = false;
+					// 	break;
+					// }
+				}
+
 				if (!allInputsValid) {
 					resolve(null);
 				} else {
@@ -487,28 +511,22 @@ class NodeClass {
 					}
 					theNodeClass.txset.add(tx);
 
+					// resolve is not a return. code continues
 					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
 
-					// todo for demo
-					// issue lowlevel block omitting mset
+					// issue lowlevel block
+					// future consider mset
 					if (theNodeClass.txset.size >= HUND / 2) {
+						// log(theNodeClass.txset);
 						const txarr = Array.from(theNodeClass.txset);
 						const txHashBuffers = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
+						// calculate merkle root
 						const rootHash = fastRoot(txHashBuffers, hashBuffer).toString('hex');
 
-						// log('@@@@@@@@@@@@')
-						// log('@@@@@@@@@@@@')
-						// log('@@@@@@@@@@@@')
-						// log(theNodeClass.txset);
-						// log('$$$$$$$$$$$$')
-						// log('$$$$$$$$$$$$')
-						// log('$$$$$$$$$$$$')
-
-						// add to blockchain
-						const nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, theNodeClass.txset]);
+						const nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, txarr]);
 						theNodeClass.blockchain.addBlock(nextBlock);
-						// write blockchain to file
 						theNodeClass.blockchain.writeBlockChainToFile('bc' + theNodeClass.nickname + '.txt');
+						log(theNodeClass.nickname + ' issued a block');
 						
 						theNodeClass.txset.clear();
 					}									
@@ -517,10 +535,6 @@ class NodeClass {
 			
 		});
 	}
-
-	// future create lowlevel blocks every thousand txs
-	// future can calculate txset merkle root by
-	// var root = fastRoot(ArrOfHashBuffrs, hashBuffer) // 2nd arg is fx
 
 	// if epochdone meaning (txsetsize == max) and periodopen
 		// epoch += 1
@@ -540,18 +554,24 @@ class NodeClass {
 
 
 class CentralBank {
-	constructor(nickname, passphrase) {
+	constructor(nickname, passphrase, authorizedNodes) {
 		this.nickname = nickname;
 		this.txset = new Set();
+
+		this.j = 0; // period number
 
 		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
 
-		this.j = 0; // period number
-
 		this.wallet = new Wallet(nickname, passphrase); // to pay nodes/users
 		this.wallet.createAddresses(FEW, passphrase);
+
+		this.blockchain = new blockchain.Blockchain(); // init blockchain
+
+		// array with elements [node pk, sign(node pk, centralbank sk)]
+		// future should update per period, add get method so nodes can access
+		this.authorizedNodes = authorizedNodes.map(nc => [nc.pk, sign(nc.pk, this.sk)]);
 	}
 
 	// returns promise of success
@@ -573,9 +593,7 @@ class CentralBank {
 		});
 	}
 
-
 	// period should process every minute
-	// in future, 1 day
 
 	// every second
 		// if period finished
@@ -597,18 +615,12 @@ class CentralBank {
 			// finalize txset for the period
 			// gen and seal high level block
 			// notify nodes new period open. give them merkle root
-
 }
 
 
-// future remove unnecessary exports
 module.exports.NODEMAP = NODEMAP;
-module.exports.SHARDMAP = SHARDMAP;
 module.exports.populateShardMap = populateShardMap;
-module.exports.Vote = Vote;
-module.exports.Addrid = Addrid;
 module.exports.Tx = Tx;
-module.exports.Wallet = Wallet;
 module.exports.User = User;
 module.exports.NodeClass = NodeClass;
 module.exports.CentralBank = CentralBank;

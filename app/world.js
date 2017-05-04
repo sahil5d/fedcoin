@@ -29,14 +29,18 @@ function fedStartCycle(testfed, testcentralbank, userCycle, nameCycle) {
 }
 
 function runCycle(userCycle, nameCycle, index) {
+	if (index > 101)
+		return;
+
 	const u1 = index%K;
 	const u2 = (index+1)%K;
 
-	log('####################### ' + index + ' ' + userCycle[u1].nickname);
+	log('############# ' + index + ' ############# ' + userCycle[u1].nickname + ' pays ' + userCycle[u2].nickname + ' 100');
 
 	const ag1 = userCycle[u1].wallet.getRichAG(nameCycle[u1].passphrase);
 	const ag2 = userCycle[u2].wallet.getSpareAG(nameCycle[u2].passphrase);
 	const tx = new fedcoin.Tx([ag1.addrid], [ag2.address], HUND);
+
 	return userCycle[u1].sendTx(tx)
 	.then(success => {
 		if (success) {
@@ -70,12 +74,11 @@ function main() {
 	const testnodesnames = testnodes.map(n=>n.nickname);
 	fedcoin.populateShardMap(testnodesnames);
 
-	log('shards ' + JSON.stringify(fedcoin.SHARDMAP));
-
 	// instantiate central bank
 	const testcentralbank = {nickname: 'Fed', passphrase: 'g h i j'};
 	const testfed = new fedcoin.CentralBank(testcentralbank.nickname,
-										testcentralbank.passphrase);
+										testcentralbank.passphrase,
+										testnodeclasses);
 	log('fed initiated');
 
 	// instantiate user cycle A

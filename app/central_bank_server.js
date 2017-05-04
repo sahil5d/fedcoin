@@ -8,7 +8,7 @@
 
 /*
 // Problem: many mintettes could send in details of the same transactino
-// We jsut want to pick one copy that will henceforth uniquely represent the txn.
+// We just want to pick one copy that will uniquely represent the txn.
 // Parse data received from lower level block
 var parseBlock = (lowerBlockData) => {
 	var data = JSON.parse(lowerBlockData);

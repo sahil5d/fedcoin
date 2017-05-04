@@ -38,7 +38,7 @@ class Blockchain {
 	}
 
 	getLatestBlock() {
-		log('getLatestBlock: currentIndex is:' + this.currentIndex);
+		// log('getLatestBlock: currentIndex is:' + this.currentIndex);
 		return this.blockchain[this.currentIndex];
 	}
 
@@ -76,7 +76,7 @@ class Blockchain {
 		if (this.isValidNewBlock(newBlock, this.getLatestBlock())) {
 			this.currentIndex += 1;
 			this.blockchain.push(newBlock);
-			log('addBlock: added block at index '+ this.currentIndex);
+			// log('addBlock: added block at index '+ this.currentIndex);
 			return true;
 		} else {
 			log('addBlock: failed to add block at index' + this.currentIndex);
@@ -92,7 +92,7 @@ class Blockchain {
 	writeBlockChainToFile(filepath) {
 		fs.writeFile(filepath, JSON.stringify(this.blockchain, null, 4), (err) => {
 			if (err) throw err;
-			log('writeBlockChainToFile: successfully wrote to file');
+			// log('writeBlockChainToFile: successfully wrote to file');
 		});
 	}
 }
