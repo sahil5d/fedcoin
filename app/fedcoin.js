@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 // Sahil Gupta
 
@@ -20,8 +20,8 @@ const cryptico = require('cryptico-js');
 const NodeRSA = require('node-rsa');
 const fastRoot = require('merkle-lib/fastRoot');
 const blockchain = require('./blockchain');
-const secrets = require('./secrets');
-const codes = secrets.codes;
+// const secrets = require('./secrets');
+// const codes = secrets.codes;
 
 const FEW = 3;
 const HUND = 50;
@@ -130,7 +130,7 @@ class FakeHttp {
 
 	broadcast(node, method, args) {
 		const nodeClass = NODEMAP[node];
-		args.push(nodeClass); // so has access to 'this'. future
+		args.push(nodeClass); // so has access to 'this'
 		return nodeClass[method].apply(this, args);
 	}
 }
@@ -141,17 +141,17 @@ function mainQueryTx(node, addrid, tx) {
 	const fake = new FakeHttp();
 	return fake.broadcast(node, 'queryTx', [addrid, tx]);
 }
-function mainCommitTx(node, tx, j, bundle, isCentralBankPrinting) {
+function mainCommitTx(node, tx, bundle, isCentralBankPrinting) {
 	const fake = new FakeHttp();
-	return fake.broadcast(node, 'commitTx', [tx, j, bundle, isCentralBankPrinting]);
+	return fake.broadcast(node, 'commitTx', [tx, bundle, isCentralBankPrinting]);
 }
 
 // algorithm v.1
-// input transaction TX, period J, isCentralBankPrinting
+// input transaction TX, isCentralBankPrinting
 // future replace isCentralBankPrinting with a signature of the CB. more secure
 // BUNDLE is 2d object, BUNDLE[NODE][ADDRID.DIGEST] = VOTE
 // return promise of whether tx is a success. logs queries and commits
-function mainSendTx(tx, j, isCentralBankPrinting) {
+function mainSendTx(tx, isCentralBankPrinting) {
 	// phase 1 query
 	const bundle = {};		// bundle of votes
 	const queries = [];		// list of all query promises
@@ -215,7 +215,7 @@ function mainSendTx(tx, j, isCentralBankPrinting) {
 
 		for (var i in nodes) {
 			const node = nodes[i];
-			var commit = mainCommitTx(node, tx, j, bundle, isCentralBankPrinting)
+			var commit = mainCommitTx(node, tx, bundle, isCentralBankPrinting)
 				.then(vote => {
 					log('commit vote - node ' + node); // future log VOTE also
 					return vote; // could be null
@@ -279,6 +279,7 @@ class Addrid {
 
 class Tx {
 	// note: first arg is addrids, second arg is addresses
+	// but after instantiation, inputs and outputs are addrids
 	constructor(inAddrids, outAddresses, value) {
 		const inAddresses = [];
 		if (inAddrids)
@@ -304,10 +305,12 @@ class Wallet {
 
 		this.addressCount = 0;
 
+		// AG abbreviates "address group"
 		// arrays of {sk: value, pk: value, address: value, addrid: value}
-		this.spareAddressGroups = [];	// queue
-		this.usedAddressGroups = [];	// list
-		this.richAddressGroups = [];	// queue
+		// future encrypt all the sks
+		this.spareAGs = [];		// queue
+		this.usedAGs = [];		// list
+		this.richAGs = [];		// queue
 	}
 
 	// input N addresses to create, PASSPHRASE required
@@ -320,7 +323,7 @@ class Wallet {
 		}
 
 		for (var i = 0; i < n; i++) {
-			// deterministic private key, usign uppercase nickname as key
+			// deterministic private key, using uppercase nickname as key
 			const seed = hmac(this.nickname + passphrase + this.addressCount, this.nickname.toUpperCase());
 			const skDraft = cryptico.generateRSAKey(seed, BITSRSA);
 
@@ -333,7 +336,7 @@ class Wallet {
 			const publicPem = sk.exportKey('pkcs1-public');
 			const publicAddress = publicPemToAddress(publicPem);
 
-			this.spareAddressGroups.push({
+			this.spareAGs.push({
 				sk: privatePem,
 				pk: publicPem,
 				address: publicAddress,
@@ -347,52 +350,52 @@ class Wallet {
 
 	// if running low on spare addresses, create some
 	// return oldest spare address group
-	getSpareAddressGroup(passphrase) {
+	getSpareAG(passphrase) {
 		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
-		if (this.spareAddressGroups.length < FEW)
+		if (this.spareAGs.length < FEW)
 			this.createAddresses(FEW*FEW, passphrase);
 
-		return this.spareAddressGroups.shift();
+		return this.spareAGs.shift();
 	}
 
 	// future accept value argument, returns as many richags as necessary
 	// return oldest rich address group
-	getRichAddressGroup(passphrase) {
+	getRichAG(passphrase) {
 		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
-		if (this.richAddressGroups.length === 0) // no funds
+		if (this.richAGs.length === 0) // no funds
 			return null;
 
-		return this.richAddressGroups.shift();
+		return this.richAGs.shift();
 	}
 
 	// add successful tx array of ADDRESSGROUPS to RICHADDRESSGROUP
 	// each ADDRESSGROUP now has non-null addrid field
-	addRichAddressGroups(addressGroups, passphrase) {
+	addRichAGs(addressGroups, passphrase) {
 		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
-		Array.prototype.push.apply(this.richAddressGroups, addressGroups);
+		Array.prototype.push.apply(this.richAGs, addressGroups);
 		return true;
 	}
 
 	// add successful tx array of ADDRESSGROUPS to USEDADDRESSGROUP
-	addUsedAddressGroups(addressGroups, passphrase) {
+	addUsedAGs(addressGroups, passphrase) {
 		if (hmac(passphrase, this.nickname) !== this.passphraseSafe) {
 			log('invalid passphrase');
 			return false;
 		}
 
-		Array.prototype.push.apply(this.usedAddressGroups, addressGroups);
+		Array.prototype.push.apply(this.usedAGs, addressGroups);
 		return true;
 	}
 
@@ -407,8 +410,9 @@ class User {
 		this.wallet.createAddresses(HUND, passphrase);
 	}
 
-	sendTx(tx, j) {
-		return mainSendTx(tx, j, false);
+	// returns promise of success
+	sendTx(tx) {
+		return mainSendTx(tx, false);
 	}
 }
 
@@ -423,6 +427,8 @@ class NodeClass {
 		this.pset = {};				// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
 		this.txset = new Set();		// set for sealing txs, all contents unique
+
+		this.j = 0;					// period number
 
 		const privateKey = new NodeRSA({b: BITSRSA}); // for signing and verifs
 		this.sk = privateKey.exportKey('pkcs1-private');
@@ -457,9 +463,9 @@ class NodeClass {
 	}
 
 	// algorithm v.3
-	// input transaction TX, period J, BUNDLE, bool ISCENTRALBANKPRINTING
+	// input transaction TX, BUNDLE, bool ISCENTRALBANKPRINTING
 	// return promise of node's vote
-	commitTx(tx, j, bundle, isCentralBankPrinting, theNodeClass) {
+	commitTx(tx, bundle, isCentralBankPrinting, theNodeClass) {
 		return new Promise((resolve, reject) => {
 			const addridSample = tx.outputs[0];
 
@@ -481,29 +487,31 @@ class NodeClass {
 					}
 					theNodeClass.txset.add(tx);
 
+					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
+
 					// todo for demo
 					// issue lowlevel block omitting mset
-					if (theNodeClass.txset.size >= HUND / 5) {
+					if (theNodeClass.txset.size >= HUND / 2) {
 						const txarr = Array.from(theNodeClass.txset);
 						const txHashBuffers = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
 						const rootHash = fastRoot(txHashBuffers, hashBuffer).toString('hex');
 
-						log(theNodeClass.txset);
-						log('$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$')
-						log('$$$$$$$$$$$$')
+						// log('@@@@@@@@@@@@')
+						// log('@@@@@@@@@@@@')
+						// log('@@@@@@@@@@@@')
+						// log(theNodeClass.txset);
+						// log('$$$$$$$$$$$$')
+						// log('$$$$$$$$$$$$')
+						// log('$$$$$$$$$$$$')
 
-						// Add to blockchain
+						// add to blockchain
 						const nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, theNodeClass.txset]);
 						theNodeClass.blockchain.addBlock(nextBlock);
-						// Write blockchain to file
-						theNodeClass.blockchain.writeBlockChainToFile('bc' + theNodeClass.nickname+ '.txt');
+						// write blockchain to file
+						theNodeClass.blockchain.writeBlockChainToFile('bc' + theNodeClass.nickname + '.txt');
+						
 						theNodeClass.txset.clear();
 					}									
-					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
 				}
 			}
 			
@@ -546,21 +554,22 @@ class CentralBank {
 		this.wallet.createAddresses(FEW, passphrase);
 	}
 
-	sendTx(tx, j, isPrinting) {
-		return mainSendTx(tx, j, isPrinting);
+	// returns promise of success
+	sendTx(tx) {
+		return mainSendTx(tx, false);
 	}
 
 	// central bank pays itself
-	// todo cleanup
 	// return promise of whether printMoney a success
 	printMoney(value, passphrase) {
-		const ag = this.wallet.getSpareAddressGroup(passphrase);
+		const ag = this.wallet.getSpareAG(passphrase);
 		const tx = new Tx(null, [ag.address], value);
 		// future save this tx in highlevel block
-		return this.sendTx(tx, this.j, true)
+		return mainSendTx(tx, true)
 		.then(success => {
 			ag.addrid = tx.outputs[0];
-			this.wallet.addRichAddressGroups([ag], passphrase);
+			this.wallet.addRichAGs([ag], passphrase);
+			return success;
 		});
 	}
 

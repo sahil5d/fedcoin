@@ -1,12 +1,9 @@
-"use strict";
+'use strict';
 
 // Shreyas Ravishankar
 
-/*
 // Store IP:PORT of mintettes as semi colon separated environment variable
-var mintettes = process.env.MINTETTES? process.env.MINTETTES.split(';') : []
-
-*/
+// var mintettes = process.env.MINTETTES? process.env.MINTETTES.split(';') : []
 
 
 /*
