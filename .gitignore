@@ -4,3 +4,4 @@ node_modules/
 # ultimately app/secrets.js
 temp.js
 bc*.txt
+*.sqlite3

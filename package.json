@@ -21,6 +21,7 @@
     "cryptico-js": "^1.1.0",
     "express": "^4.15.2",
     "merkle-lib": "^2.0.10",
-    "node-rsa": "^0.4.2"
+    "node-rsa": "^0.4.2",
+    "sqlite3": "^3.1.8"
   }
 }
