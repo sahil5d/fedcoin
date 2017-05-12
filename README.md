@@ -4,7 +4,7 @@ A Blockchain-Backed Central Bank Cryptocurrency
 
 ## Getting Started
 
-Key app logic resides in *app/blockchain.js*, *app/fedcoin.js*, and *app/world.js*
+Key app logic resides in *app/fedcoin.js*, *app/blockchain.js*, and *app/world.js*
 
 ### Installing
 

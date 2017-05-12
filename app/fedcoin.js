@@ -13,6 +13,7 @@ keygen depends on it
 
 todo = to do now
 future = to do later
+could = to do much later
 */
 
 const crypto = require('crypto');
@@ -25,10 +26,11 @@ const blockchain = require('./blockchain');
 
 const FEW = 3;
 const HUND = 50;
-const NSHARDS = 2;		// todo change to 3. simple is 2
-const BITSRSA = 512;	// todo change to 2048. simple is 512
+const NSHARDS = 2;		// could change to 3. simple is 2
+const BITSRSA = 512;	// could change to 2048. simple is 512
 const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
 const SHARDMAP = [];	// see world.js. index shard #, value [nodeclasses]
+const THEFED = null;	// see world.js. the one, global CentralBank
 
 function log(x) { console.log(x); }
 
@@ -112,7 +114,7 @@ function populateShardMap(nodes) {
 	log('shards ' + JSON.stringify(SHARDMAP));
 }
 
-// todo need check for iscentralbankprinting. tx.inputs will be null
+// future. implement. and check for iscentralbankprinting bc tx.inputs null
 function checkTx(tx) {
 	return true;
 	var inVal = 0, outVal = 0;
@@ -125,7 +127,7 @@ function checkTx(tx) {
 }
 
 // simulate http request
-// this way USER needs no knowledge of the NODECLASS, just NODE
+// this way sender needs no knowledge of the NODECLASS, just NODE
 // future use servers
 class FakeHttp {
 	constructor() {}
@@ -137,6 +139,15 @@ class FakeHttp {
 	}
 }
 
+// input NODE for http request to nodeclass
+// only issued by central bank
+// return bool of success
+function mainNotifyNode(node, method, args) {
+	const fake = new FakeHttp();
+	return fake.broadcast(node, method, args);
+}
+
+// todo clean up these two fxs like above
 // input NODE for http request to nodeclass
 // return promise of nodeclass's vote
 function mainQueryTx(node, addrid, tx) {
@@ -221,7 +232,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 				.then(vote => {
 					// log('vote is ' + vote);
 					log('commit vote - node ' + node);
-					return vote; // could be null
+					return vote; // can be null
 				}).catch(err => {
 					log('commit error ' + err);
 					return err;
@@ -432,7 +443,10 @@ class NodeClass {
 
 		this.shard = stringToShard(hash(nickname));
 
-		this.j = 0;					// period number
+		this.jEpoch = 0;				// epoch number
+		this.jPeriod = null;			// period number. set by central bank
+		this.periodOpen = false;		// set by cb
+		this.highlevelBlockHash = null;	// set by cb
 
 		// future update sks and pks every period
 		const privateKey = new NodeRSA({b: BITSRSA}); // for signing and verifs
@@ -443,6 +457,17 @@ class NodeClass {
 		this.wallet.createAddresses(FEW, passphrase);
 
 		this.blockchain = new blockchain.Blockchain(); // init blockchain
+	}
+
+	// future need to validate this is signed by cb
+	setPeriod(period, theNodeClass) {
+		theNodeClass.jPeriod = period;
+	}
+	setPeriodOpen(status, theNodeClass) {
+		theNodeClass.periodOpen = status;
+	}
+	setHighlevelBlockHash(hash, theNodeClass) {
+		theNodeClass.highlevelBlockHash = hash;
 	}
 
 	// algorithm v.2
@@ -514,21 +539,36 @@ class NodeClass {
 					// resolve is not a return. code continues
 					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
 
-					// issue lowlevel block
-					// future consider mset
-					if (theNodeClass.txset.size >= HUND / 2) {
+					// issue lowlevel block if enough txs and period is open
+					// future use mset
+					if (theNodeClass.txset.size >= HUND / 2 &&
+						theNodeClass.periodOpen) {
+
 						// log(theNodeClass.txset);
 						const txarr = Array.from(theNodeClass.txset);
 						const txHashBuffers = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
+
 						// calculate merkle root
 						const rootHash = fastRoot(txHashBuffers, hashBuffer).toString('hex');
 
+						// calculate H for lowlevel block B todo
+						const h = hash();
+
+
+						// b = [h, txarr, mset (future), sig]
+
 						const nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, txarr]);
-						theNodeClass.blockchain.addBlock(nextBlock);
+
+						if (theNodeClass.blockchain.addBlock(nextBlock)) {
+							const sig = sign(nextBlock.hash, theNodeClass.sk);
+							THEFED.addLowlevelBlock(nextBlock, sig);
+						}
+
 						theNodeClass.blockchain.writeBlockChainToFile('bc' + theNodeClass.nickname + '.txt');
 						log(theNodeClass.nickname + ' issued a block');
 						
 						theNodeClass.txset.clear();
+						theNodeClass.jEpoch += 1;
 					}									
 				}
 			}
@@ -536,6 +576,7 @@ class NodeClass {
 		});
 	}
 
+	// todo
 	// if epochdone meaning (txsetsize == max) and periodopen
 		// epoch += 1
 		// do stuff like calculate H
@@ -544,21 +585,23 @@ class NodeClass {
 		// this.lastlowerblockhash = H
 		// refresh txset, mset, etc
 
+	//lasthigherblockhash should update with cb messages
+
 	// need vars periodopened, periodclosed
 	// need to listen to cb broadcasts
-	// when periodclosed, don't gen lowlevel blocks
 	// but can still do queries/commits
-	// begin again with new merkleroot when periodopen
+	// begin again with new merkleroot when periodopen!
 	// note that blocks pushed to cb in queue. do it async
 }
 
 
 class CentralBank {
-	constructor(nickname, passphrase, authorizedNodes) {
+	constructor(nickname, passphrase, nodesNamesAndPKs) {
 		this.nickname = nickname;
 		this.txset = new Set();
 
-		this.j = 0; // period number
+		this.startTime = new Date(); // todo
+		this.jPeriod = 0; // period number
 
 		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
@@ -569,9 +612,26 @@ class CentralBank {
 
 		this.blockchain = new blockchain.Blockchain(); // init blockchain
 
-		// array with elements [node pk, sign(node pk, centralbank sk)]
-		// future should update per period, add get method so nodes can access
-		this.authorizedNodes = authorizedNodes.map(nc => [nc.pk, sign(nc.pk, this.sk)]);
+		// array with elements {node nickname, node pk, sign(node pk, centralbank sk)}
+		// future should update per period, and CB should broadcast to nodes
+		this.authorizedNodes = nodesNamesAndPKs.map(nnp => {
+			return {
+				nickname: nnp.nickname,
+				pk: nnp.pk,
+				sig: sign(nnp.pk, this.sk)
+			}
+		});
+
+		// broadcast to all nodes
+		// future should send with signature
+		this.authorizedNodes.forEach(an => {
+			mainNotifyNode(an.nickname, 'setPeriod', [this.jPeriod]);
+			mainNotifyNode(an.nickname, 'setPeriodOpen', [true]);
+			mainNotifyNode(an.nickname, 'setHighlevelBlockHash',
+				[this.blockchain.getLatestBlock().hash]);
+		});
+
+		this.lowlevelQueue = [];	// queue of lowlevel blocks pushed by nodes
 	}
 
 	// returns promise of success
@@ -593,6 +653,12 @@ class CentralBank {
 		});
 	}
 
+	addLowlevelBlock(block, sig) {
+		// todo verifiy node's sig
+		this.lowlevelQueue.push(block);
+	}
+
+	// todo
 	// period should process every minute
 
 	// every second
@@ -614,11 +680,14 @@ class CentralBank {
 				// in other words, check that each tx was included in lowlevel blocks by majority of nodes mapped to each tx output address
 			// finalize txset for the period
 			// gen and seal high level block
-			// notify nodes new period open. give them merkle root
+			// notify nodes new period open
+				// give them merkle root and authorizednodes
 }
 
 
+// future remove as many global vars as possible
 module.exports.NODEMAP = NODEMAP;
+module.exports.THEFED = THEFED;
 module.exports.populateShardMap = populateShardMap;
 module.exports.Tx = Tx;
 module.exports.User = User;

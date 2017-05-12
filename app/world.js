@@ -47,7 +47,7 @@ function runCycle(userCycle, nameCycle, index) {
 			ag2.addrid = tx.outputs[0];
 			userCycle[u2].wallet.addRichAGs([ag2], nameCycle[u2].passphrase);
 			userCycle[u1].wallet.addUsedAGs([ag1], nameCycle[u1].passphrase);
-			return runCycle(userCycle, nameCycle, index+1);
+			return runCycle(userCycle, nameCycle, index+1); // tail recursion
 		} else {
 			log('user->user tx failed');
 		}
@@ -75,10 +75,17 @@ function main() {
 	fedcoin.populateShardMap(testnodesnames);
 
 	// instantiate central bank
+	// pass in nodes' {nickname, pk} to authorize
 	const testcentralbank = {nickname: 'Fed', passphrase: 'g h i j'};
 	const testfed = new fedcoin.CentralBank(testcentralbank.nickname,
 										testcentralbank.passphrase,
-										testnodeclasses);
+										testnodeclasses.map(nc => {
+											return {
+												nickname: nc.nickname,
+												pk: nc.pk
+											}
+										}));
+	fedcoin.THEFED = testfed;
 	log('fed initiated');
 
 	// instantiate user cycle A
