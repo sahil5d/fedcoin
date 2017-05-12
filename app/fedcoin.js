@@ -30,7 +30,7 @@ const NSHARDS = 2;		// could change to 3. simple is 2
 const BITSRSA = 512;	// could change to 2048. simple is 512
 const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
 const SHARDMAP = [];	// see world.js. index shard #, value [nodeclasses]
-const THEFED = null;	// see world.js. the one, global CentralBank
+var THEFED = null;		// see world.js. the one, global CentralBank
 
 function log(x) { console.log(x); }
 
@@ -114,6 +114,10 @@ function populateShardMap(nodes) {
 	log('shards ' + JSON.stringify(SHARDMAP));
 }
 
+function setTheFed(centralbank) {
+	THEFED = centralbank;
+}
+
 // future. implement. and check for iscentralbankprinting bc tx.inputs null
 function checkTx(tx) {
 	return true;
@@ -126,37 +130,12 @@ function checkTx(tx) {
 		// does this mean we need sigs on every tx?
 }
 
-// simulate http request
-// this way sender needs no knowledge of the NODECLASS, just NODE
-// future use servers
-class FakeHttp {
-	constructor() {}
-
-	broadcast(node, method, args) {
-		const nodeClass = NODEMAP[node];
-		args.push(nodeClass); // so has access to 'this'
-		return nodeClass[method].apply(this, args);
-	}
-}
-
-// input NODE for http request to nodeclass
-// only issued by central bank
-// return bool of success
-function mainNotifyNode(node, method, args) {
-	const fake = new FakeHttp();
-	return fake.broadcast(node, method, args);
-}
-
-// todo clean up these two fxs like above
-// input NODE for http request to nodeclass
-// return promise of nodeclass's vote
-function mainQueryTx(node, addrid, tx) {
-	const fake = new FakeHttp();
-	return fake.broadcast(node, 'queryTx', [addrid, tx]);
-}
-function mainCommitTx(node, tx, bundle, isCentralBankPrinting) {
-	const fake = new FakeHttp();
-	return fake.broadcast(node, 'commitTx', [tx, bundle, isCentralBankPrinting]);
+// input NODE for simulated http request to nodeclass
+// sender needs no knowledge of NODECLASS
+function messageNode(node, method, args) {
+	const nodeClass = NODEMAP[node];
+	args.push(nodeClass); // so has access to 'this'
+	return nodeClass[method].apply(this, args);
 }
 
 // algorithm v.1
@@ -182,7 +161,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 			const node = nodes[ii];
 			// note: each query promise catches its own errors
 			// note: so won't break Promise.all (neither will null promise)
-			var query = mainQueryTx(node, addrid, tx)
+			var query = messageNode(node, 'queryTx', [addrid, tx])
 				.then(vote => {
 					// log('vote is' + vote);
 					log('query vote - node ' + node);
@@ -218,7 +197,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 				return false;
 			}
 
-			log('queries pass - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
+			log(`queries pass - ${yesses}/${results.length} - tx ${tx.digest.substr(0, 8)} - value ${tx.value}`);
 		}
 
 		// phase 2 commit
@@ -228,7 +207,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 
 		for (var i in nodes) {
 			const node = nodes[i];
-			var commit = mainCommitTx(node, tx, bundle, isCentralBankPrinting)
+			var commit = messageNode(node, 'commitTx', [tx, bundle, isCentralBankPrinting])
 				.then(vote => {
 					// log('vote is ' + vote);
 					log('commit vote - node ' + node);
@@ -256,7 +235,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 
 			// reached success
 
-			log('commits pass - ' + yesses + '/' + results.length + ' - tx ' + tx.digest.substr(0, 8) + ' - value ' + tx.value);
+			log(`commits pass - ${yesses}/${results.length} - tx ${tx.digest.substr(0, 8)} - value ${tx.value}`);
 
 			return true;
 		}).catch(err => {
@@ -500,103 +479,88 @@ class NodeClass {
 			// future pass ISCENTRALBANKPRINTING into checkTx
 			if (!checkTx(tx) || theNodeClass.shard !== addridSample.shard) {
 				resolve(null);
-			} else {
-				var allInputsValid = true;
-				// if ISCENTRALBANKPRINTING loop will be skipped
-				for (var i in tx.inputs) {
-					const addrid = tx.inputs[i];
-					const nodes = SHARDMAP[addrid.shard];
-					var yesses = 0;
-
-					for (var ii in nodes) {
-						const node = nodes[ii];
-						if (bundle[node] && bundle[node][addrid.digest]) {
-							const vote = bundle[node][addrid.digest];
-							// future line 9 algo 3
-							// use authorizedNodes
-								// if thenodeclass.pk is in authorizednodes.map(arr=>arr[0]) // this should be saved for speed
-							// if good to go
-							// yesses += 1
-						}
-					}
-
-					// if (yesses <= nodes.length / 2) {
-					// 	log('queries invalid, commit rejected');
-					// 	allInputsValid = false;
-					// 	break;
-					// }
-				}
-
-				if (!allInputsValid) {
-					resolve(null);
-				} else {
-					for (var i in tx.outputs) {
-						const addrid = tx.outputs[i];
-						theNodeClass.utxo[addrid.digest] = true;
-					}
-					theNodeClass.txset.add(tx);
-
-					// resolve is not a return. code continues
-					resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
-
-					// issue lowlevel block if enough txs and period is open
-					// future use mset
-					if (theNodeClass.txset.size >= HUND / 2 &&
-						theNodeClass.periodOpen) {
-
-						// log(theNodeClass.txset);
-						const txarr = Array.from(theNodeClass.txset);
-						const txHashBuffers = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
-
-						// calculate merkle root
-						const rootHash = fastRoot(txHashBuffers, hashBuffer).toString('hex');
-
-						// calculate H for lowlevel block B todo
-						const h = hash();
-
-
-						// b = [h, txarr, mset (future), sig]
-
-						const nextBlock = theNodeClass.blockchain.generateNextBlock([rootHash, txarr]);
-
-						if (theNodeClass.blockchain.addBlock(nextBlock)) {
-							const sig = sign(nextBlock.hash, theNodeClass.sk);
-							THEFED.addLowlevelBlock(nextBlock, sig);
-						}
-
-						theNodeClass.blockchain.writeBlockChainToFile('bc' + theNodeClass.nickname + '.txt');
-						log(theNodeClass.nickname + ' issued a block');
-						
-						theNodeClass.txset.clear();
-						theNodeClass.jEpoch += 1;
-					}									
-				}
+				return;
 			}
-			
+
+			var allInputsValid = true;
+			// if ISCENTRALBANKPRINTING loop will be skipped
+			for (var i in tx.inputs) {
+				const addrid = tx.inputs[i];
+				const nodes = SHARDMAP[addrid.shard];
+				var yesses = 0;
+
+				for (var ii in nodes) {
+					const node = nodes[ii];
+					if (bundle[node] && bundle[node][addrid.digest]) {
+						const vote = bundle[node][addrid.digest];
+						// future line 9 algo 3
+						// use authorizedNodes
+							// if thenodeclass.pk is in authorizednodes.map(arr=>arr[0]) // this should be saved for speed
+						// if good to go
+						// yesses += 1
+					}
+				}
+
+				// if (yesses <= nodes.length / 2) {
+				// 	log('queries invalid, commit rejected');
+				// 	allInputsValid = false;
+				// 	break;
+				// }
+			}
+
+			if (!allInputsValid) {
+				resolve(null);
+				return;
+			}
+
+			for (var i in tx.outputs) {
+				const addrid = tx.outputs[i];
+				theNodeClass.utxo[addrid.digest] = true;
+			}
+			theNodeClass.txset.add(tx);
+
+			// resolve is not a return. code continues
+			resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
+
+			// future use mset
+			// issue lowlevel block if enough txs and period is open
+			if (theNodeClass.txset.size < HUND/2 || !theNodeClass.periodOpen)
+				return;
+
+			const txarr = Array.from(theNodeClass.txset);
+			const txHashBuffs = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
+			const txMerkle = fastRoot(txHashBuffs, hashBuffer).toString('hex');
+			const node = theNodeClass.nickname;
+
+			// calculate H for lowlevel block B
+			const h = hash(
+				theNodeClass.highlevelBlockHash +
+				theNodeClass.blockchain.getLatestBlock().hash +
+				'future msetArr' +
+				txMerkle);
+
+			const sig = sign('yes', theNodeClass.sk);
+
+			const b = [h, txarr, sig, 'future msetArr', node];
+
+			const nextBlock = theNodeClass.blockchain.makeNextBlock(b);
+
+			if (theNodeClass.blockchain.addBlock(nextBlock))
+				THEFED.addLowlevelBlock(nextBlock);
+
+			// future need to reset mset, pset
+			theNodeClass.txset.clear();
+			theNodeClass.jEpoch += 1;
+
+			log(node + ' issued a block');
+			theNodeClass.blockchain.writeToFile(`bc${node}.txt`);
 		});
 	}
-
-	// todo
-	// if epochdone meaning (txsetsize == max) and periodopen
-		// epoch += 1
-		// do stuff like calculate H
-		// package lower block
-		// put on queue
-		// this.lastlowerblockhash = H
-		// refresh txset, mset, etc
-
-	//lasthigherblockhash should update with cb messages
-
-	// need vars periodopened, periodclosed
-	// need to listen to cb broadcasts
-	// but can still do queries/commits
-	// begin again with new merkleroot when periodopen!
-	// note that blocks pushed to cb in queue. do it async
 }
 
 
 class CentralBank {
-	constructor(nickname, passphrase, nodesNamesAndPKs) {
+	constructor(nickname, passphrase, nodeDTOs) {
 		this.nickname = nickname;
 		this.txset = new Set();
 
@@ -612,26 +576,27 @@ class CentralBank {
 
 		this.blockchain = new blockchain.Blockchain(); // init blockchain
 
-		// array with elements {node nickname, node pk, sign(node pk, centralbank sk)}
+		// array with each element {node nickname, node pk, sig(node pk,cb sk)}
 		// future should update per period, and CB should broadcast to nodes
-		this.authorizedNodes = nodesNamesAndPKs.map(nnp => {
+		this.authorizedNodes = nodeDTOs.map(dto => {
 			return {
-				nickname: nnp.nickname,
-				pk: nnp.pk,
-				sig: sign(nnp.pk, this.sk)
-			}
+				nickname: dto.nickname,
+				pk: dto.pk,
+				sig: sign(dto.pk, this.sk)
+			};
 		});
 
 		// broadcast to all nodes
 		// future should send with signature
-		this.authorizedNodes.forEach(an => {
-			mainNotifyNode(an.nickname, 'setPeriod', [this.jPeriod]);
-			mainNotifyNode(an.nickname, 'setPeriodOpen', [true]);
-			mainNotifyNode(an.nickname, 'setHighlevelBlockHash',
+		this.authorizedNodes.forEach(dto => {
+			messageNode(dto.nickname, 'setPeriod', [this.jPeriod]);
+			messageNode(dto.nickname, 'setPeriodOpen', [true]);
+			messageNode(dto.nickname, 'setHighlevelBlockHash',
 				[this.blockchain.getLatestBlock().hash]);
 		});
 
-		this.lowlevelQueue = [];	// queue of lowlevel blocks pushed by nodes
+		this.lowlevelQueue = []; // queue of lowlevel blocks pushed by nodes
+		this.lowlevelQueueValidated = [];
 	}
 
 	// returns promise of success
@@ -653,9 +618,13 @@ class CentralBank {
 		});
 	}
 
-	addLowlevelBlock(block, sig) {
+	addLowlevelBlock(block) {
 		// todo verifiy node's sig
 		this.lowlevelQueue.push(block);
+
+
+		// when clean
+		// add to lowlevelqueuevalidated
 	}
 
 	// todo
@@ -687,7 +656,7 @@ class CentralBank {
 
 // future remove as many global vars as possible
 module.exports.NODEMAP = NODEMAP;
-module.exports.THEFED = THEFED;
+module.exports.setTheFed = setTheFed;
 module.exports.populateShardMap = populateShardMap;
 module.exports.Tx = Tx;
 module.exports.User = User;

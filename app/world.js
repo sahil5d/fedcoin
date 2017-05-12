@@ -75,7 +75,7 @@ function main() {
 	fedcoin.populateShardMap(testnodesnames);
 
 	// instantiate central bank
-	// pass in nodes' {nickname, pk} to authorize
+	// pass in node DTOs with keys {nickname, pk} to authorize
 	const testcentralbank = {nickname: 'Fed', passphrase: 'g h i j'};
 	const testfed = new fedcoin.CentralBank(testcentralbank.nickname,
 										testcentralbank.passphrase,
@@ -85,7 +85,7 @@ function main() {
 												pk: nc.pk
 											}
 										}));
-	fedcoin.THEFED = testfed;
+	fedcoin.setTheFed(testfed);
 	log('fed initiated');
 
 	// instantiate user cycle A
