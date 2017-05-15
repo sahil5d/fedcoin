@@ -87,7 +87,7 @@ class Blockchain {
 	writeToFile(filepath) {
 		fs.writeFile(filepath, JSON.stringify(this.blockchain, null, 4), (err) => {
 			if (err) throw err;
-			// log('writeToFile successfully wrote to file');
+			// log('wrote blockchain to file' + filepath);
 		});
 	}
 }

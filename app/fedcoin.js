@@ -43,17 +43,17 @@ function hmac(data, key) { return crypto.createHmac('sha256', key).update(data).
 // input string data and private key pem
 // return signature
 function sign(data, privatePem) {
-	const sign = crypto.createSign('RSA-SHA256');
-	sign.update(data);
-	return sign.sign(privatePem);
+	const signer = crypto.createSign('RSA-SHA256');
+	signer.update(data);
+	return signer.sign(privatePem);
 }
 
 // input string data, public key pem, signature
 // return true iff success
 function verify(data, publicPem, signature) {
-	const verify = crypto.createVerify('RSA-SHA256');
-	verify.update(data);
-	return verify.verify(publicPem, signature);
+	const verifier = crypto.createVerify('RSA-SHA256');
+	verifier.update(data);
+	return verifier.verify(publicPem, signature);
 }
 
 // input public key pem
@@ -106,9 +106,9 @@ function populateShardMap(nodes) {
 	log('shards ' + JSON.stringify(SHARDMAP));
 }
 
-function setTheFed(centralbank) {
-	THEFED = centralbank;
-}
+function setNodemap(node, nodeClass) { NODEMAP[node] = nodeClass; }
+
+function setTheFed(centralbank) { THEFED = centralbank; }
 
 // future. implement. and check for iscentralbankprinting bc tx.inputs null
 function checkTx(tx) {
@@ -455,7 +455,7 @@ class NodeClass {
 			} else if (theNodeClass.utxo[digest] || theNodeClass.pset[digest].digest === tx.digest) {
 				theNodeClass.utxo[digest] = null;	// idempotent action
 				theNodeClass.pset[digest] = tx;		// idempotent action
-				resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
+				resolve(new Vote(theNodeClass.pk, sign(tx.digest, theNodeClass.sk)));
 			} else {
 				resolve(null);
 			}
@@ -513,7 +513,7 @@ class NodeClass {
 			theNodeClass.txset.add(tx);
 
 			// resolve is not a return. code continues
-			resolve(new Vote(theNodeClass.pk, sign('yes', theNodeClass.sk)));
+			resolve(new Vote(theNodeClass.pk, sign(tx.digest, theNodeClass.sk)));
 
 			// future use mset
 			// issue lowlevel block if enough txs and period is open
@@ -532,7 +532,7 @@ class NodeClass {
 				'future msetArr' +
 				txMerkle);
 
-			const sig = sign('yes', theNodeClass.sk);
+			const sig = sign(h, theNodeClass.sk);
 
 			const b = [h, txarr, sig, 'future msetArr', node];
 
@@ -545,8 +545,9 @@ class NodeClass {
 			theNodeClass.txset.clear();
 			theNodeClass.jEpoch += 1;
 
+			// blockchain is cumulative, not recreated every epoch
 			log(node + ' issued a block');
-			theNodeClass.blockchain.writeToFile(`bc${node}.txt`);
+			theNodeClass.blockchain.writeToFile(`bc${node}-${theNodeClass.jPeriod}.${theNodeClass.jEpoch}.txt`);
 		});
 	}
 }
@@ -567,8 +568,6 @@ class CentralBank {
 		this.wallet = new Wallet(nickname, passphrase); // to pay nodes/users
 		this.wallet.createAddresses(FEW, passphrase);
 
-		this.blockchain = new blockchain.Blockchain(); // init blockchain
-
 		// array with each element {node nickname, node pk, sig(node pk,cb sk)}
 		// future should update per period, and CB should broadcast to nodes
 		this.authorizedNodes = nodeDTOs.map(dto => {
@@ -578,6 +577,10 @@ class CentralBank {
 				sig: sign(dto.pk, this.sk)
 			};
 		});
+
+		// todo put authorizedNodes DPK into blockhain
+
+		this.blockchain = new blockchain.Blockchain(); // init blockchain
 
 		// broadcast to all nodes
 		// future should send with signature
@@ -612,6 +615,11 @@ class CentralBank {
 	}
 
 	addLowlevelBlock(block) {
+		// block has index, previoushash, timestamp, data (b), hash
+		// b = [h, txarr, sig, 'future msetArr', node]
+
+
+
 		// todo verifiy node's sig
 		this.lowlevelQueue.push(block);
 
@@ -622,6 +630,7 @@ class CentralBank {
 
 	// todo
 	// period should process every minute
+	// should process the queue every second
 
 	// every second
 		// if period finished
@@ -630,6 +639,7 @@ class CentralBank {
 		// check queue for lower blocks
 		// async: if any, validate them in order
 			// check signature
+			// check if node is authorized
 			// regen hash with block data & node's previous lowlevel hash
 			// if all good, add lowlevel txset to highlevel txset
 			// make sure no duplicates
@@ -643,12 +653,12 @@ class CentralBank {
 			// finalize txset for the period
 			// gen and seal high level block
 			// notify nodes new period open
-				// give them merkle root and authorizednodes
+				// give them period, periodOpen, and highLevelBlockHash
+				// and authorizedNodes
 }
 
 
-// future remove as many global vars as possible
-module.exports.NODEMAP = NODEMAP;
+module.exports.setNodemap = setNodemap;
 module.exports.setTheFed = setTheFed;
 module.exports.populateShardMap = populateShardMap;
 module.exports.Tx = Tx;

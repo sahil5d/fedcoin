@@ -68,7 +68,7 @@ function main() {
 	testnodes.forEach(n => {
 		var nc = new fedcoin.NodeClass(n.nickname, n.passphrase);
 		testnodeclasses.push(nc);
-		fedcoin.NODEMAP[n.nickname] = nc;
+		fedcoin.setNodemap(n.nickname, nc);
 		log('node ' + n.nickname + ' initiated');
 	});
 	const testnodesnames = testnodes.map(n=>n.nickname);
