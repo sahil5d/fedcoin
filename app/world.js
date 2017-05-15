@@ -35,7 +35,7 @@ function runCycle(userCycle, nameCycle, index) {
 	const u1 = index%K;
 	const u2 = (index+1)%K;
 
-	log('############# ' + index + ' ############# ' + userCycle[u1].nickname + ' pays ' + userCycle[u2].nickname + ' 100');
+	log('########## ' + index + ' ########## ' + userCycle[u1].nickname + ' pays ' + userCycle[u2].nickname + ' 100');
 
 	const ag1 = userCycle[u1].wallet.getRichAG(nameCycle[u1].passphrase);
 	const ag2 = userCycle[u2].wallet.getSpareAG(nameCycle[u2].passphrase);

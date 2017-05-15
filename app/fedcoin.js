@@ -538,16 +538,16 @@ class NodeClass {
 
 			const nextBlock = theNodeClass.blockchain.makeNextBlock(b);
 
-			if (theNodeClass.blockchain.addBlock(nextBlock))
-				THEFED.addLowlevelBlock(nextBlock);
+			theNodeClass.blockchain.addBlock(nextBlock);
+			THEFED.addLowlevelBlock(nextBlock);
+			theNodeClass.jEpoch += 1;
+
+			const time = theNodeClass.jPeriod + '.' + theNodeClass.jEpoch;
+			log('---------- ' + node + ' issued block ' + time);
+			theNodeClass.blockchain.writeToFile('bc-'+node+'-'+time+'.txt');
 
 			// future need to reset mset, pset
 			theNodeClass.txset.clear();
-			theNodeClass.jEpoch += 1;
-
-			// blockchain is cumulative, not recreated every epoch
-			log(node + ' issued a block');
-			theNodeClass.blockchain.writeToFile(`bc${node}-${theNodeClass.jPeriod}.${theNodeClass.jEpoch}.txt`);
 		});
 	}
 }
@@ -569,7 +569,6 @@ class CentralBank {
 		this.wallet.createAddresses(FEW, passphrase);
 
 		// array with each element {node nickname, node pk, sig(node pk,cb sk)}
-		// future should update per period, and CB should broadcast to nodes
 		this.authorizedNodes = nodeDTOs.map(dto => {
 			return {
 				nickname: dto.nickname,
@@ -578,9 +577,19 @@ class CentralBank {
 			};
 		});
 
-		// todo put authorizedNodes DPK into blockhain
-
-		this.blockchain = new blockchain.Blockchain(); // init blockchain
+		// init blockchain, then issue first block with authorized nodes
+		this.blockchain = new blockchain.Blockchain();
+		const firstTxMerkle = hash('');
+		const h = hash(
+			this.blockchain.getLatestBlock().hash +
+			firstTxMerkle);
+		const sig = sign(h, this.sk);
+		const B = [h, [], sig, this.authorizedNodes];
+		const nextBlock = this.blockchain.makeNextBlock(B);
+		this.blockchain.addBlock(nextBlock);
+		this.jPeriod += 1;
+		log('========== fed issued block ' + this.jPeriod);
+		this.blockchain.writeToFile('bc-FED-'+this.jPeriod+'.txt');
 
 		// broadcast to all nodes
 		// future should send with signature
@@ -654,7 +663,7 @@ class CentralBank {
 			// gen and seal high level block
 			// notify nodes new period open
 				// give them period, periodOpen, and highLevelBlockHash
-				// and authorizedNodes
+				// and authorizedNodes (or broadcast the whole blockchain)
 }
 
 
