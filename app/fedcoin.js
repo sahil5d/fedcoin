@@ -516,7 +516,7 @@ class NodeClass {
 			resolve(new Vote(theNodeClass.pk, sign(tx.digest, theNodeClass.sk)));
 
 			// future use mset
-			// issue lowlevel block if enough txs and period is open
+			// issue lowlevel block only if enough txs and period is open
 			if (theNodeClass.txset.size < HUND/2 || !theNodeClass.periodOpen)
 				return;
 
@@ -525,19 +525,15 @@ class NodeClass {
 			const txMerkle = fastRoot(txHashBuffs, hashBuffer).toString('hex');
 			const node = theNodeClass.nickname;
 
-			// calculate H for lowlevel block B
 			const h = hash(
 				theNodeClass.highlevelBlockHash +
 				theNodeClass.blockchain.getLatestBlock().hash +
 				'future msetArr' +
 				txMerkle);
-
 			const sig = sign(h, theNodeClass.sk);
+			const data = [h, txarr, sig, 'future msetArr', node];
 
-			const b = [h, txarr, sig, 'future msetArr', node];
-
-			const nextBlock = theNodeClass.blockchain.makeNextBlock(b);
-
+			const nextBlock = theNodeClass.blockchain.makeNextBlock(data);
 			theNodeClass.blockchain.addBlock(nextBlock);
 			THEFED.addLowlevelBlock(nextBlock);
 			theNodeClass.jEpoch += 1;
@@ -584,8 +580,8 @@ class CentralBank {
 			this.blockchain.getLatestBlock().hash +
 			firstTxMerkle);
 		const sig = sign(h, this.sk);
-		const B = [h, [], sig, this.authorizedNodes];
-		const nextBlock = this.blockchain.makeNextBlock(B);
+		const data = [h, [], sig, this.authorizedNodes];
+		const nextBlock = this.blockchain.makeNextBlock(data);
 		this.blockchain.addBlock(nextBlock);
 		this.jPeriod += 1;
 		log('========== fed issued block ' + this.jPeriod);
@@ -602,6 +598,8 @@ class CentralBank {
 
 		this.lowlevelQueue = []; // queue of lowlevel blocks pushed by nodes
 		this.lowlevelQueueValidated = [];
+
+		this.processLowlevelBlocks(0);
 	}
 
 	// returns promise of success
@@ -623,38 +621,34 @@ class CentralBank {
 		});
 	}
 
-	addLowlevelBlock(block) {
-		// block has index, previoushash, timestamp, data (b), hash
-		// b = [h, txarr, sig, 'future msetArr', node]
+	addLowlevelBlock(block) { this.lowlevelQueue.push(block); }
 
+	validateLowlevelBlock(block) {
+		// block has index, previoushash, timestamp, data, hash
+		// data = [h, txarr, sig, 'future msetArr', node]
 
+		// check signature
+		// check if node is authorized
+		// regen hash with block data & node's previous lowlevel hash
+		// if all good, add lowlevel txset to highlevel txset
+		// make sure no duplicates
+		// update value of cb's copy of node's previous lowlevel hash
 
-		// todo verifiy node's sig
-		this.lowlevelQueue.push(block);
-
-
-		// when clean
-		// add to lowlevelqueuevalidated
+		// when finally validated
+		// add to lowlevelQueueValidated
 	}
 
 	// todo
-	// period should process every minute
-	// should process the queue every second
-
-	// every second
-		// if period finished
-			// notify nodes period ended
-
+	// called on central bank init, then every second
+	processLowlevelBlocks(index) {
 		// check queue for lower blocks
-		// async: if any, validate them in order
-			// check signature
-			// check if node is authorized
-			// regen hash with block data & node's previous lowlevel hash
-			// if all good, add lowlevel txset to highlevel txset
-			// make sure no duplicates
-			// update value of node's previous lowlevel hash
+		// async: if any, remove them, then validate them in order
 
-		// if period finished
+		// period ends approx every minute
+		if (index === 60) {
+			index = 0;
+
+			// notify nodes period ended
 			// detect double spending
 				// count # of each tx received from lowlevel blocks
 				// rmv those that didn't get committed by majority of owners
@@ -664,6 +658,10 @@ class CentralBank {
 			// notify nodes new period open
 				// give them period, periodOpen, and highLevelBlockHash
 				// and authorizedNodes (or broadcast the whole blockchain)
+		}
+
+		setTimeout(this.processLowlevelBlocks.bind(this, index+1), 1000);
+	}
 }
 
 
