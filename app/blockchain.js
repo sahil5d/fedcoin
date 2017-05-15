@@ -25,7 +25,6 @@ class Block {
 class Blockchain {
 	constructor() {
 		this.blockchain = [this.makeGenesisBlock()];
-		this.currentIndex = 0;
 	}
   
 	// genesis block has random hash
@@ -38,13 +37,12 @@ class Blockchain {
 	}
 
 	getLatestBlock() {
-		// log('getLatestBlock: currentIndex is:' + this.currentIndex);
-		return this.blockchain[this.currentIndex];
+		return this.blockchain[this.blockchain.length - 1];
 	}
 
 	makeNextBlock(blockData) {
 		 const previousBlock = this.getLatestBlock();
-		 // log('makeNextBlock: previousBlock is:' + JSON.stringify(previousBlock));
+		 // log('previousBlock is' + JSON.stringify(previousBlock));
 		 const nextIndex = previousBlock.index + 1;
 		 const nextTimestamp = new Date().getTime() / 1000;
 		 const nextHash = this.calcBlockHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
@@ -58,13 +56,13 @@ class Blockchain {
 
 	isValidNewBlock(newBlock, previousBlock) {
 		if (previousBlock.index + 1 !== newBlock.index) {
-			log('isValidNewBlock: invalid index for new block');
+			log('invalid index for new block');
 			return false;
 		} else if (previousBlock.hash !== newBlock.previousHash) {
-			log('isValidNewBlock: hash of previous block invalid');
+			log('hash of previous block invalid');
 			return false;
 		} else if (!this.verifyBlockHash(newBlock, newBlock.hash)) {
-			log('isValidNewBlock: hash of block does not match contents');
+			log('hash of block does not match contents');
 			return false;
 		}
 		return true;
@@ -72,27 +70,24 @@ class Blockchain {
 
 	// return if success
 	addBlock(newBlock) {
-		// log('addBlock: attempting to add block at index ' +  this.currentIndex + 1);
 		if (this.isValidNewBlock(newBlock, this.getLatestBlock())) {
-			this.currentIndex += 1;
 			this.blockchain.push(newBlock);
-			// log('addBlock: added block at index '+ this.currentIndex);
 			return true;
 		}
 
-		log('addBlock: failed to add block at index' + this.currentIndex);
+		log('failed to add block');
 		return false;
 	}
 
 	print() {
-		log('current index is' + this.currentIndex);
-		log('blockchain is:' + JSON.stringify(this.blockchain, null, 4));
+		log('current index is' + this.blockchain.length - 1);
+		log('blockchain is' + JSON.stringify(this.blockchain, null, 4));
 	}
 
 	writeToFile(filepath) {
 		fs.writeFile(filepath, JSON.stringify(this.blockchain, null, 4), (err) => {
 			if (err) throw err;
-			// log('writeToFile: successfully wrote to file');
+			// log('writeToFile successfully wrote to file');
 		});
 	}
 }

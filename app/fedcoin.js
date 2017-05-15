@@ -3,14 +3,6 @@
 // Sahil Gupta
 
 /*
-Notes
-sk is secret private key
-pk is public key
-
-nickname-passphrase pair must be universally unique.
-ensure minimum complexity of user passphrases
-keygen depends on it
-
 todo = to do now
 future = to do later
 could = to do much later
@@ -319,6 +311,7 @@ class Wallet {
 			const seed = hmac(this.nickname + passphrase + this.addressCount, this.nickname.toUpperCase());
 			const skDraft = cryptico.generateRSAKey(seed, BITSRSA);
 
+			// private/secret key
 			const sk = new NodeRSA();
 			// note: adds leading zeros to n,p,q,dmp1 during import
 			sk.importKey(cryptico.skToHex(skDraft), 'components');
