@@ -445,9 +445,9 @@ class NodeClass {
 	// return promise of node's vote
 	// when central banks prints money, won't get called
 	queryTx(addrid, tx, theNodeClass) {
-		const digest = addrid.digest;
-
 		return new Promise((resolve, reject) => {
+			const digest = addrid.digest;
+
 			if (!checkTx(tx) || theNodeClass.shard !== addrid.shard) {
 				resolve(null);
 			} else if (theNodeClass.utxo[digest] || theNodeClass.pset[digest].digest === tx.digest) {
@@ -526,10 +526,10 @@ class NodeClass {
 			const h = hash(
 				theNodeClass.highlevelBlockHash +
 				theNodeClass.blockchain.getLatestBlock().hash +
-				'future msetArr' +
+				'future msetarr' +
 				txMerkle);
 			const sig = sign(h, theNodeClass.sk);
-			const data = [h, txarr, sig, 'future msetArr', node];
+			const data = [h, txarr, sig, 'future msetarr', node];
 
 			const nextBlock = theNodeClass.blockchain.makeNextBlock(data);
 			theNodeClass.blockchain.addBlock(nextBlock);
@@ -620,32 +620,36 @@ class CentralBank {
 
 	addLowlevelBlock(block) { this.lowlevelQueue.push(block); }
 
+	// validates blocks and adds their txs to cb's txs
 	// returns promise after all blocks validated
 	validateLowlevelBlocks(blocks) {
-		// todo
-		for (var i = 0; i < blocks.length; i += 1) {
+		return new Promise((resolve, reject) => {
+			for (var i = 0; i < blocks.length; i += 1) {
+				const block = blocks[i],
+					data = block.data,
+					dataH		= data[0],
+					dataTxarr	= data[1],
+					dataSig		= data[2],
+					dataMsetarr	= data[3],
+					dataNode	= data[4];
 
-		}
 
-		// block has index, previoushash, timestamp, data, hash
-		// data = [h, txarr, sig, 'future msetArr', node]
 
-		// check signature
+
+				// assert all tests passed
+				this.lowlevelQueueValidated.push(block);
+			}
+			resolve('done');
+		});
+
 		// check if node is authorized
+		// check signature
 		// regen hash with block data & node's previous lowlevel hash
 		// if all good, add lowlevel txset to highlevel txset
 		// make sure no duplicates
 		// update value of cb's copy of node's previous lowlevel hash
-
-		// when finally validated
-		// this.lowlevelQueueValidated.push(block);
-
-		return new Promise((resolve, reject) => {
-			resolve('good')
-		});
 	}
 
-	// todo
 	// called on central bank init, then every second
 	processLowlevelBlocks(index) {
 		// thread safe, for if new lowlevel blocks are added during this fx
@@ -669,14 +673,14 @@ class CentralBank {
 					// in other words, check that each tx was included in lowlevel blocks by majority of nodes mapped to each tx output address
 				// finalize txset for the period
 				// gen and seal high level block
-				// flush lowlevelQueueValidated
+				// flush lowlevelQueueValidated, or archive to file
 				// notify nodes new period open
 					// give them period, periodOpen, and highLevelBlockHash
 					// and authorizedNodes (or broadcast the whole blockchain)
 			}
 
+			// repeat every second
 			setTimeout(this.processLowlevelBlocks.bind(this, index+1), 1000);
-
 		}).catch(err => {
 			log('lowlevel blocks failed to validate')
 			return err;
