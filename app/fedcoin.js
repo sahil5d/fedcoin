@@ -140,9 +140,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 	const bundle = {};		// bundle of votes
 	const queries = [];		// list of all query promises
 
-	function notNullOrErr(vote) {
-		return vote !== null && !(vote instanceof Error);
-	}
+	function notNullOrErr(x) { return x !== null && !(x instanceof Error); }
 
 	// when central bank prints money, this loop skipped. no queries made
 	for (var i in tx.inputs) {
@@ -178,7 +176,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 	// this still executes when central bank prints money (queries===[])
 	return Promise.all(queries)
 	.then(results => {
-		// an array of nulls, votes, or errors
+		// RESULTS is array of nulls, votes, or errors
 		// log('queries results ' + results);
 
 		if (!isCentralBankPrinting) {
@@ -215,7 +213,7 @@ function mainSendTx(tx, isCentralBankPrinting) {
 		return Promise.all(commits)
 		.then(results => {
 			// RESULTS can be used as audit proof
-			// an array of nulls, votes, or errors
+			// RESULTS is array of nulls, votes, or errors
 			// log('commits results ' + results + tx.value);
 
 			// local check that majority of votes are yes
@@ -554,7 +552,6 @@ class CentralBank {
 		this.nickname = nickname;
 		this.txset = new Set();
 
-		this.startTime = new Date(); // todo
 		this.jPeriod = 0; // period number
 
 		const privateKey = new NodeRSA({b: BITSRSA});
@@ -623,7 +620,13 @@ class CentralBank {
 
 	addLowlevelBlock(block) { this.lowlevelQueue.push(block); }
 
-	validateLowlevelBlock(block) {
+	// returns promise after all blocks validated
+	validateLowlevelBlocks(blocks) {
+		// todo
+		for (var i = 0; i < blocks.length; i += 1) {
+
+		}
+
 		// block has index, previoushash, timestamp, data, hash
 		// data = [h, txarr, sig, 'future msetArr', node]
 
@@ -635,32 +638,49 @@ class CentralBank {
 		// update value of cb's copy of node's previous lowlevel hash
 
 		// when finally validated
-		// add to lowlevelQueueValidated
+		// this.lowlevelQueueValidated.push(block);
+
+		return new Promise((resolve, reject) => {
+			resolve('good')
+		});
 	}
 
 	// todo
 	// called on central bank init, then every second
 	processLowlevelBlocks(index) {
-		// check queue for lower blocks
-		// async: if any, remove them, then validate them in order
+		// thread safe, for if new lowlevel blocks are added during this fx
+		const len = this.lowlevelQueue.length;
+		const blocks = [];
+		for (var i = 0; i < len; i += 1)
+			blocks.push(this.lowlevelQueue.shift());
 
-		// period ends approx every minute
-		if (index === 60) {
-			index = 0;
+		this.validateLowlevelBlocks(blocks)
+		.then(result => {
+			// todo
+			// period ends approx every minute
+			if (index === 60) {
+				index = 0;
 
-			// notify nodes period ended
-			// detect double spending
-				// count # of each tx received from lowlevel blocks
-				// rmv those that didn't get committed by majority of owners
-				// in other words, check that each tx was included in lowlevel blocks by majority of nodes mapped to each tx output address
-			// finalize txset for the period
-			// gen and seal high level block
-			// notify nodes new period open
-				// give them period, periodOpen, and highLevelBlockHash
-				// and authorizedNodes (or broadcast the whole blockchain)
-		}
+				// notify nodes period ended
+				// read from lowlevelQueueValidated
+				// detect double spending
+					// count # of each tx received from lowlevel blocks
+					// rmv those that didn't get committed by majority of owners
+					// in other words, check that each tx was included in lowlevel blocks by majority of nodes mapped to each tx output address
+				// finalize txset for the period
+				// gen and seal high level block
+				// flush lowlevelQueueValidated
+				// notify nodes new period open
+					// give them period, periodOpen, and highLevelBlockHash
+					// and authorizedNodes (or broadcast the whole blockchain)
+			}
 
-		setTimeout(this.processLowlevelBlocks.bind(this, index+1), 1000);
+			setTimeout(this.processLowlevelBlocks.bind(this, index+1), 1000);
+
+		}).catch(err => {
+			log('lowlevel blocks failed to validate')
+			return err;
+		});
 	}
 }
 
