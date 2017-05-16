@@ -525,17 +525,17 @@ class NodeClass {
 
 			// now creating lowlevel block
 
-			const txHashBuffs = theNodeClass.txset.map(tx => Buffer.from(tx.digest, 'hex'));
-			const txMerkle = fastRoot(txHashBuffs, hashBuffer).toString('hex');
+			const txsetBuffs = theNodeClass.txset.map(tx => Buffer.from(tx.digest, 'hex'));
+			const txMerkle = fastRoot(txsetBuffs, hashBuffer).toString('hex');
 			const node = theNodeClass.nickname;
 
 			const h = hash(
 				theNodeClass.highlevelBlockHash +
 				theNodeClass.blockchain.getLatestBlock().hash +
-				'future msetarr' +
+				'future mset' +
 				txMerkle);
 			const sig = sign(h, theNodeClass.sk);
-			const data = [h, theNodeClass.txset, sig, 'future msetarr', node];
+			const data = [h, theNodeClass.txset, sig, 'future mset', node];
 
 			const nextBlock = theNodeClass.blockchain.makeNextBlock(data);
 			theNodeClass.blockchain.addBlock(nextBlock);
@@ -628,34 +628,50 @@ class CentralBank {
 
 	addLowlevelBlock(block) { this.lowlevelQueue.push(block); }
 
+	// todo
 	// validates blocks and adds their txs to cb's txs
 	// returns promise after all blocks validated
 	validateLowlevelBlocks(blocks) {
 		return new Promise((resolve, reject) => {
 			for (var i = 0; i < blocks.length; i += 1) {
-				const block = blocks[i],
-					data = block.data,
-					dataH		= data[0],
-					dataTxset	= data[1],
-					dataSig		= data[2],
-					dataMsetarr	= data[3],
-					dataNode	= data[4];
+				const block = blocks[i];
+				const blockH = block.data[0],
+					  blockTxset = block.data[1],
+					  blockSig = block.data[2],
+					  blockNode = block.data[4];
 
+				const nodeDto = this.authorizedNodes.find((dto) => dto.nickname === blockNode);
 
+				if (!nodeDto || !verify(blockH, nodeDto.pk, blockSig)) {
+					resolve(null);
+					return;
+				}
 
+				const blockTxsetBuffs = blockTxset.map(tx => Buffer.from(tx.digest, 'hex'));
+				const blockTxMerkle = fastRoot(blockTxsetBuffs, hashBuffer).toString('hex');
+				const calcH = hash(
+					this.blockchain.getLatestBlock().hash +
+					'todo the prev lowlevel hash from this node' +
+					'future mset' +
+					blockTxMerkle);
+
+				if (blockH !== calcH) {
+					resolve(null);
+					return;
+				}
+
+				// todo update value of cb's copy of node's prev lowlevel hash
+
+				// todo if all good, add lowlevel txset to highlevel txset without duplicates
+
+				// todo figure out whether lowlevelQueueValidated is needed if all txs are in the txset
 
 				// assert all tests passed
 				this.lowlevelQueueValidated.push(block);
 			}
+
 			resolve('done');
 		});
-
-		// check if node is authorized
-		// check signature
-		// regen hash with block data & node's previous lowlevel hash
-		// if all good, add lowlevel txset to highlevel txset
-		// make sure no duplicates
-		// update value of cb's copy of node's previous lowlevel hash
 	}
 
 	// called on central bank init, then every second
@@ -668,9 +684,8 @@ class CentralBank {
 
 		this.validateLowlevelBlocks(blocks)
 		.then(result => {
-			// todo
 			// period ends approx every minute
-			if (index === 60) {
+			if (index === 5) { // todo
 				index = 0;
 
 				// notify nodes period ended
