@@ -406,10 +406,11 @@ class NodeClass {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;	// must be unique. bank stock symbol?
 		this.utxo = {};				// object of unspent tx outputs
-									// key is ADDRID.DIGEST, val true=unspent
+									// key is ADDRID.DIGEST, val true==unspent
 		this.pset = {};				// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
-		this.txset = new Set();		// set for sealing txs, all contents unique
+		this.txset = [];			// array of unique sealed txs
+		this.txsetDigests = {};		// key is TX.DIGEST, val true==in TXSET
 
 		this.shard = stringToShard(hash(nickname));
 
@@ -508,18 +509,23 @@ class NodeClass {
 				const addrid = tx.outputs[i];
 				theNodeClass.utxo[addrid.digest] = true;
 			}
-			theNodeClass.txset.add(tx);
+
+			if (theNodeClass.txsetDigests[tx.digest] !== true) {
+				theNodeClass.txset.push(tx);
+				theNodeClass.txsetDigests[tx.digest] = true;
+			}
 
 			// resolve is not a return. code continues
 			resolve(new Vote(theNodeClass.pk, sign(tx.digest, theNodeClass.sk)));
 
 			// future use mset
 			// issue lowlevel block only if enough txs and period is open
-			if (theNodeClass.txset.size < HUND/2 || !theNodeClass.periodOpen)
+			if (theNodeClass.txset.length < HUND/2 || !theNodeClass.periodOpen)
 				return;
 
-			const txarr = Array.from(theNodeClass.txset);
-			const txHashBuffs = txarr.map(tx => Buffer.from(tx.digest, 'hex'));
+			// now creating lowlevel block
+
+			const txHashBuffs = theNodeClass.txset.map(tx => Buffer.from(tx.digest, 'hex'));
 			const txMerkle = fastRoot(txHashBuffs, hashBuffer).toString('hex');
 			const node = theNodeClass.nickname;
 
@@ -529,7 +535,7 @@ class NodeClass {
 				'future msetarr' +
 				txMerkle);
 			const sig = sign(h, theNodeClass.sk);
-			const data = [h, txarr, sig, 'future msetarr', node];
+			const data = [h, theNodeClass.txset, sig, 'future msetarr', node];
 
 			const nextBlock = theNodeClass.blockchain.makeNextBlock(data);
 			theNodeClass.blockchain.addBlock(nextBlock);
@@ -541,7 +547,8 @@ class NodeClass {
 			theNodeClass.blockchain.writeToFile('bc-'+node+'-'+time+'.txt');
 
 			// future need to reset mset, pset
-			theNodeClass.txset.clear();
+			theNodeClass.txset = [];
+			theNodeClass.txsetDigests = {};
 		});
 	}
 }
@@ -550,7 +557,8 @@ class NodeClass {
 class CentralBank {
 	constructor(nickname, passphrase, nodeDTOs) {
 		this.nickname = nickname;
-		this.txset = new Set();
+		this.txset = [];
+		this.txsetDigests = {};
 
 		this.jPeriod = 0; // period number
 
@@ -628,7 +636,7 @@ class CentralBank {
 				const block = blocks[i],
 					data = block.data,
 					dataH		= data[0],
-					dataTxarr	= data[1],
+					dataTxset	= data[1],
 					dataSig		= data[2],
 					dataMsetarr	= data[3],
 					dataNode	= data[4];
