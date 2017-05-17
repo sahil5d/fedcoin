@@ -80,15 +80,9 @@ function main() {
 		log('node ' + n.nickname + ' initiated');
 	});
 
-	// pass in node DTOs with keys {nickname, pk} to authorize
-	testfed.initAuthorizedNodes(testnodeclasses.map(nc => {
-											return {
-												nickname: nc.nickname,
-												pk: nc.pk
-											}
-										}));
+	testfed.startProcessLoop();
 
-return // todo
+return; // todo
 
 	// instantiate user cycle A
 	const testnamesA = [

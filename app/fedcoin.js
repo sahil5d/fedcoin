@@ -392,9 +392,7 @@ class User {
 	}
 
 	// returns promise of success
-	sendTx(tx) {
-		return mainSendTx(tx, false);
-	}
+	sendTx(tx) { return mainSendTx(tx, false); }
 }
 
 
@@ -422,10 +420,18 @@ class NodeClass {
 
 		this.blockchain = new blockchain.Blockchain(); // init blockchain
 
+		this.applyForFedAuth();
+
 		this.jEpoch = 1;				// epoch number
 		this.jPeriod = null;			// period number. set by central bank
 		this.periodOpen = false;		// set by cb
 		this.highlevelBlockHash = null;	// set by cb
+	}
+
+	// apply to fed for authorization and send genesis block
+	applyForFedAuth() {
+		messageFed('handleNodeAuth', [this.nickname, this.pk]);
+		messageFed('tempNodeSendGenBlock', [this.nickname, this.blockchain.getLatestBlock()]);
 	}
 
 	// future need to validate this is signed by cb
@@ -527,13 +533,13 @@ class NodeClass {
 			const txMerkle = fastRoot(txsetBuffs, hashBuffer).toString('hex');
 			const node = self.nickname;
 
-			const h = hash(
+			const dataH = hash(
 				self.highlevelBlockHash +
-				self.blockchain.getLatestBlock().hash +
+				self.blockchain.getLatestBlock().hash + // note: block's hash
 				'future mset' +
 				txMerkle);
-			const sig = sign(h, self.sk);
-			const data = [h, self.txset, sig, 'future mset', node];
+			const sig = sign(dataH, self.sk);
+			const data = [dataH, self.txset, sig, 'future mset', node];
 
 			const nextBlock = self.blockchain.makeNextBlock(data);
 			self.blockchain.addBlock(nextBlock);
@@ -541,7 +547,7 @@ class NodeClass {
 
 			const time = self.jPeriod + '.' + self.jEpoch;
 			log('---------- ' + node + ' issued block ' + time);
-			self.blockchain.writeToFile('bc-'+node+'-'+time+'.txt');
+			self.blockchain.writeToFile('bc-' + node + '-' + time + '.txt');
 
 			self.jEpoch += 1;
 
@@ -567,6 +573,7 @@ class CentralBank {
 		this.wallet.createAddresses(FEW, passphrase);
 
 		this.authorizedNodes = [];
+		this.authorizedNodesLastBlock = {}; // key NODE, value BLOCK
 
 		this.blockchain = new blockchain.Blockchain();
 
@@ -574,49 +581,59 @@ class CentralBank {
 
 		this.lowlevelQueue = []; // queue of lowlevel blocks pushed by nodes
 		this.lowlevelQueueValidated = [];
-
-		this.processLowlevelBlocks(0); // start the processing loop
 	}
 
-	initAuthorizedNodes(nodeDTOs) {
-		log('shards ' + JSON.stringify(SHARDMAP));
-
-		// array with each element {node nickname, node pk, sig(node pk,cb sk)}
-		this.authorizedNodes = nodeDTOs.map(dto => {
-			return {
-				nickname: dto.nickname,
-				pk: dto.pk,
-				sig: sign(dto.pk, this.sk)
-			};
+	// handle nodeclass application for authorization
+	handleNodeAuth(nickname, pk, self) {
+		self.authorizedNodes.push({
+			nickname: nickname,
+			pk: pk,
+			sig: sign(pk, self.sk)
 		});
+	}
 
+	// todo remove
+	tempNodeSendGenBlock(node, block, self) {
+		if (!self.authorizedNodesLastBlock[node])
+			self.authorizedNodesLastBlock[node] = block;
+	}
+
+	startProcessLoop() {
+		// todo
+		log('shards ' + JSON.stringify(SHARDMAP));
+		log(this.authorizedNodes)
+		log(JSON.stringify(this.authorizedNodesLastBlock))
+		this.authorizedNodes.forEach(an => {
+			NODEMAP[an.nickname].blockchain.writeToFile('bc-' + an.nickname + '.txt');
+		})
+
+
+		// future remove block issue here, and have it done in processLLB
 		const firstTxMerkle = hash('');
-		const h = hash(
-			this.blockchain.getLatestBlock().hash +
-			firstTxMerkle);
-		const sig = sign(h, this.sk);
-		const data = [h, [], sig, this.authorizedNodes];
+		const dataH = hash(
+		    this.blockchain.getLatestBlock().hash + // note: block's hash
+		    firstTxMerkle);
+		const sig = sign(dataH, this.sk);
+		const data = [dataH, [], sig, this.authorizedNodes];
 		const nextBlock = this.blockchain.makeNextBlock(data);
 		this.blockchain.addBlock(nextBlock);
 		log('========== fed issued block ' + this.jPeriod);
-		this.blockchain.writeToFile('bc-FED-'+this.jPeriod+'.txt');
-
+		this.blockchain.writeToFile('bc-FED-' + this.jPeriod + '.txt');
 		this.jPeriod += 1;
-
 		// broadcast to all nodes
 		// future should send with signature
 		this.authorizedNodes.forEach(dto => {
-			messageNode(dto.nickname, 'setPeriod', [this.jPeriod]);
-			messageNode(dto.nickname, 'setPeriodOpen', [true]);
-			messageNode(dto.nickname, 'setHighlevelBlockHash',
-				[this.blockchain.getLatestBlock().hash]);
+		    messageNode(dto.nickname, 'setPeriod', [this.jPeriod]);
+		    messageNode(dto.nickname, 'setPeriodOpen', [true]);
+		    messageNode(dto.nickname, 'setHighlevelBlockHash',
+		        [this.blockchain.getLatestBlock().hash]);
 		});
+
+		this.processLowlevelBlocks(0);
 	}
 
 	// returns promise of success
-	sendTx(tx) {
-		return mainSendTx(tx, false);
-	}
+	sendTx(tx) { return mainSendTx(tx, false); }
 
 	// central bank pays itself
 	// return promise of whether printMoney a success
@@ -643,30 +660,32 @@ class CentralBank {
 		return new Promise((resolve, reject) => {
 			for (var i = 0; i < blocks.length; i += 1) {
 				const block = blocks[i];
-				const blockH = block.data[0],
-					  blockTxset = block.data[1],
-					  blockSig = block.data[2],
-					  blockNode = block.data[4];
+				const dataH = block.data[0],
+					  txset = block.data[1],
+					  sig = block.data[2],
+					  node = block.data[4];
 
-				const nodeDto = this.authorizedNodes.find((dto) => dto.nickname === blockNode);
+				const nodeDto = this.authorizedNodes.find((dto) => dto.nickname === node);
 
-				if (!nodeDto || !verify(blockH, nodeDto.pk, blockSig)) {
+				if (!nodeDto || !verify(dataH, nodeDto.pk, sig)) {
 					resolve(null);
 					return;
 				}
 
-				const blockTxsetBuffs = blockTxset.map(tx => Buffer.from(tx.digest, 'hex'));
-				const blockTxMerkle = fastRoot(blockTxsetBuffs, hashBuffer).toString('hex');
+				const txsetBuffs = txset.map(tx => Buffer.from(tx.digest, 'hex'));
+				const txMerkle = fastRoot(txsetBuffs, hashBuffer).toString('hex');
 				const calcH = hash(
 					this.blockchain.getLatestBlock().hash +
-					'todo the prev lowlevel hash from this node' +
+					this.authorizedNodesLastBlock[node].hash +
 					'future mset' +
-					blockTxMerkle);
+					txMerkle);
 
-				if (blockH !== calcH) {
+				if (dataH !== calcH) {
 					resolve(null);
 					return;
 				}
+
+				// todo check that block is valid with isValidNewBlock
 
 				// todo update value of cb's copy of node's prev lowlevel hash
 
@@ -718,7 +737,7 @@ class CentralBank {
 			// repeat every second
 			setTimeout(this.processLowlevelBlocks.bind(this, index+1), 1000);
 		}).catch(err => {
-			log('lowlevel blocks failed to validate')
+			log('lowlevel blocks failed to validate');
 			return err;
 		});
 	}
