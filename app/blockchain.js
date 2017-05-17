@@ -24,37 +24,24 @@ class Block {
 
 class Blockchain {
 	constructor() {
-		this.blockchain = [this.makeGenesisBlock()];
+		this.blockchain = [Blockchain.makeGenesisBlock()];
 	}
   
 	// genesis block has random hash
-	makeGenesisBlock() {
+	static makeGenesisBlock() {
 		return new Block(0, '0', 1000000000, 'genesis block', crypto.randomBytes(32).toString('hex'));
 	}
 
-	calcBlockHash(index, previousHash, timestamp, data) { 
+	static calcBlockHash(index, previousHash, timestamp, data) {
 		return hash(index + previousHash + timestamp + data);
 	}
 
-	getLatestBlock() {
-		return this.blockchain[this.blockchain.length - 1];
-	}
-
-	makeNextBlock(blockData) {
-		 const previousBlock = this.getLatestBlock();
-		 // log('previousBlock is' + JSON.stringify(previousBlock));
-		 const nextIndex = previousBlock.index + 1;
-		 const nextTimestamp = new Date().getTime() / 1000;
-		 const nextHash = this.calcBlockHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
-		 return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash);
-	}
-
 	// verify block's intended hash value matches given hash value
-	verifyBlockHash(block, hash) {
+	static verifyBlockHash(block, hash) {
 		return hash === this.calcBlockHash(block.index, block.previousHash, block.timestamp, block.data);
 	}
 
-	isValidNewBlock(newBlock, previousBlock) {
+	static isValidNewBlock(newBlock, previousBlock) {
 		if (previousBlock.index + 1 !== newBlock.index) {
 			log('invalid index for new block');
 			return false;
@@ -68,9 +55,22 @@ class Blockchain {
 		return true;
 	}
 
+	getLatestBlock() {
+		return this.blockchain[this.blockchain.length - 1];
+	}
+
+	makeNextBlock(blockData) {
+		 const previousBlock = this.getLatestBlock();
+		 // log('previousBlock is' + JSON.stringify(previousBlock));
+		 const nextIndex = previousBlock.index + 1;
+		 const nextTimestamp = new Date().getTime() / 1000;
+		 const nextHash = Blockchain.calcBlockHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
+		 return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash);
+	}
+
 	// return if success
 	addBlock(newBlock) {
-		if (this.isValidNewBlock(newBlock, this.getLatestBlock())) {
+		if (Blockchain.isValidNewBlock(newBlock, this.getLatestBlock())) {
 			this.blockchain.push(newBlock);
 			return true;
 		}

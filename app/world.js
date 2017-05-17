@@ -60,7 +60,6 @@ function main() {
 	const testcentralbank = {nickname: 'Fed', passphrase: 'g h i j'};
 	const testfed = new fedcoin.CentralBank(testcentralbank.nickname,
 											testcentralbank.passphrase);
-	fedcoin.setTheFed(testfed);
 	log('fed initiated');
 
 	// instantiate nodeclasses
@@ -75,8 +74,6 @@ function main() {
 	testnodeobjects.forEach(n => {
 		var nc = new fedcoin.NodeClass(n.nickname, n.passphrase);
 		testnodeclasses.push(nc);
-		fedcoin.setNodemap(n.nickname, nc);
-		fedcoin.setShardMap(n.nickname);
 		log('node ' + n.nickname + ' initiated');
 	});
 

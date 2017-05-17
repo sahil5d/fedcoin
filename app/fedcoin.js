@@ -21,8 +21,8 @@ const HUND = 50;
 const MINUTE = 5;		// could change to 60
 const NSHARDS = 2;		// could change to 3. simple is 2
 const BITSRSA = 512;	// could change to 2048. simple is 512
-const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
-const SHARDMAP = [];	// see world.js. index shard #, value [nodeclasses]
+const NODEMAP = {};		// key NODE, value NODECLASS
+const SHARDMAP = [];	// index shard #, value arr of nodeclasses
 var THEFED = null;		// see world.js. the one, global CentralBank
 
 function log(x) { console.log(x); }
@@ -92,18 +92,6 @@ function stringToShard(string) {
 	const decimal = parseInt(string.substr(0, sample), 16);
 	return decimal % NSHARDS;
 }
-
-// input NODE to assign to shard
-function setShardMap(node) {
-	const shard = stringToShard(hash(node));
-	if (!SHARDMAP[shard])
-		SHARDMAP[shard] = [];
-	SHARDMAP[shard].push(node);
-}
-
-function setNodemap(node, nodeClass) { NODEMAP[node] = nodeClass; }
-
-function setTheFed(centralbank) { THEFED = centralbank; }
 
 // future. implement. and check for iscentralbankprinting bc tx.inputs null
 function checkTx(tx) {
@@ -379,8 +367,6 @@ class Wallet {
 		Array.prototype.push.apply(this.usedAGs, addressGroups);
 		return true;
 	}
-
-
 }
 
 
@@ -408,7 +394,9 @@ class NodeClass {
 		this.pset = {};				// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
 
+		this.updateGlobalNodeMap();
 		this.shard = stringToShard(hash(nickname));
+		this.updateGlobalShardMap();
 
 		// future update sks and pks every period
 		const privateKey = new NodeRSA({b: BITSRSA}); // for signing and verifs
@@ -427,6 +415,14 @@ class NodeClass {
 		this.periodOpen = false;		// set by cb
 		this.highlevelBlockHash = null;	// set by cb
 	}
+
+	updateGlobalShardMap() {
+		if (!SHARDMAP[this.shard])
+			SHARDMAP[this.shard] = [];
+		SHARDMAP[this.shard].push(this.nickname);
+	}
+
+	updateGlobalNodeMap() { NODEMAP[this.nickname] = this; }
 
 	// apply to fed for authorization and send genesis block
 	applyForFedAuth() {
@@ -509,8 +505,8 @@ class NodeClass {
 				return;
 			}
 
-			for (var i in tx.outputs) {
-				const addrid = tx.outputs[i];
+			for (var ii in tx.outputs) {
+				const addrid = tx.outputs[ii];
 				self.utxo[addrid.digest] = true;
 			}
 
@@ -565,6 +561,8 @@ class CentralBank {
 		this.txset = [];
 		this.txsetDigests = {};
 
+		this.setGlobalFed();
+
 		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
 		this.pk = privateKey.exportKey('pkcs1-public');
@@ -582,6 +580,8 @@ class CentralBank {
 		this.lowlevelQueue = []; // queue of lowlevel blocks pushed by nodes
 		this.lowlevelQueueValidated = [];
 	}
+
+	setGlobalFed() { THEFED = this; }
 
 	// handle nodeclass application for authorization
 	handleNodeAuth(nickname, pk, self) {
@@ -601,11 +601,12 @@ class CentralBank {
 	startProcessLoop() {
 		// todo
 		log('shards ' + JSON.stringify(SHARDMAP));
-		log(this.authorizedNodes)
-		log(JSON.stringify(this.authorizedNodesLastBlock))
+		log('nodemap' + JSON.stringify(NODEMAP).substr(0, 50));
+		log(this.authorizedNodes);
+		log(JSON.stringify(this.authorizedNodesLastBlock).substr(0, 50));
 		this.authorizedNodes.forEach(an => {
 			NODEMAP[an.nickname].blockchain.writeToFile('bc-' + an.nickname + '.txt');
-		})
+		});
 
 
 		// future remove block issue here, and have it done in processLLB
@@ -664,6 +665,7 @@ class CentralBank {
 					  txset = block.data[1],
 					  sig = block.data[2],
 					  node = block.data[4];
+				const lastBlock = this.authorizedNodesLastBlock[node];
 
 				const nodeDto = this.authorizedNodes.find((dto) => dto.nickname === node);
 
@@ -676,7 +678,7 @@ class CentralBank {
 				const txMerkle = fastRoot(txsetBuffs, hashBuffer).toString('hex');
 				const calcH = hash(
 					this.blockchain.getLatestBlock().hash +
-					this.authorizedNodesLastBlock[node].hash +
+					lastBlock.hash +
 					'future mset' +
 					txMerkle);
 
@@ -685,7 +687,10 @@ class CentralBank {
 					return;
 				}
 
-				// todo check that block is valid with isValidNewBlock
+				if (!blockchain.Blockchain.isValidNewBlock(block, lastBlock)) {
+					resolve(null);
+					return;
+				}
 
 				// todo update value of cb's copy of node's prev lowlevel hash
 
@@ -744,9 +749,6 @@ class CentralBank {
 }
 
 
-module.exports.setNodemap = setNodemap;
-module.exports.setTheFed = setTheFed;
-module.exports.setShardMap = setShardMap;
 module.exports.Tx = Tx;
 module.exports.User = User;
 module.exports.NodeClass = NodeClass;
