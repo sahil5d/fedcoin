@@ -89,7 +89,7 @@ function main() {
 											}
 										}));
 
-return // todo
+// return // todo
 
 	// instantiate user cycle A
 	const testnamesA = [

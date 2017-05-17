@@ -123,12 +123,15 @@ function checkTx(tx) {
 		// does this mean we need sigs on every tx?
 }
 
-// input NODE for simulated http request to nodeclass
-// sender needs no knowledge of NODECLASS
+// simulate http request to instance
 function messageNode(node, method, args) {
-	const nodeClass = NODEMAP[node];
-	args.push(nodeClass); // so has access to 'this'
+	const nodeClass = NODEMAP[node];	// NODE is string
+	args.push(nodeClass);				// so has access to 'this'
 	return nodeClass[method].apply(this, args);
+}
+function messageFed(method, args) {
+	args.push(THEFED);
+	return THEFED[method].apply(this, args);
 }
 
 // algorithm v.1
@@ -432,30 +435,30 @@ class NodeClass {
 	}
 
 	// future need to validate this is signed by cb
-	setPeriod(period, theNodeClass) {
-		theNodeClass.jPeriod = period;
+	setPeriod(period, self) {
+		self.jPeriod = period;
 	}
-	setPeriodOpen(status, theNodeClass) {
-		theNodeClass.periodOpen = status;
+	setPeriodOpen(status, self) {
+		self.periodOpen = status;
 	}
-	setHighlevelBlockHash(hash, theNodeClass) {
-		theNodeClass.highlevelBlockHash = hash;
+	setHighlevelBlockHash(hash, self) {
+		self.highlevelBlockHash = hash;
 	}
 
 	// algorithm v.2
 	// input ADDRID, transaction TX
 	// return promise of node's vote
 	// when central banks prints money, won't get called
-	queryTx(addrid, tx, theNodeClass) {
+	queryTx(addrid, tx, self) {
 		return new Promise((resolve, reject) => {
 			const digest = addrid.digest;
 
-			if (!checkTx(tx) || theNodeClass.shard !== addrid.shard) {
+			if (!checkTx(tx) || self.shard !== addrid.shard) {
 				resolve(null);
-			} else if (theNodeClass.utxo[digest] || theNodeClass.pset[digest].digest === tx.digest) {
-				theNodeClass.utxo[digest] = null;	// idempotent action
-				theNodeClass.pset[digest] = tx;		// idempotent action
-				resolve(new Vote(theNodeClass.pk, sign(tx.digest, theNodeClass.sk)));
+			} else if (self.utxo[digest] || self.pset[digest].digest === tx.digest) {
+				self.utxo[digest] = null;	// idempotent action
+				self.pset[digest] = tx;		// idempotent action
+				resolve(new Vote(self.pk, sign(tx.digest, self.sk)));
 			} else {
 				resolve(null);
 			}
@@ -465,12 +468,12 @@ class NodeClass {
 	// algorithm v.3
 	// input transaction TX, BUNDLE, bool ISCENTRALBANKPRINTING
 	// return promise of node's vote
-	commitTx(tx, bundle, isCentralBankPrinting, theNodeClass) {
+	commitTx(tx, bundle, isCentralBankPrinting, self) {
 		return new Promise((resolve, reject) => {
 			const addridSample = tx.outputs[0];
 
 			// future pass ISCENTRALBANKPRINTING into checkTx
-			if (!checkTx(tx) || theNodeClass.shard !== addridSample.shard) {
+			if (!checkTx(tx) || self.shard !== addridSample.shard) {
 				resolve(null);
 				return;
 			}
@@ -488,7 +491,7 @@ class NodeClass {
 						const vote = bundle[node][addrid.digest];
 						// future line 9 algo 3
 						// use authorizedNodes
-							// if thenodeclass.pk is in authorizednodes.map(arr=>arr[0]) // this should be saved for speed
+							// if self.pk is in authorizednodes.map(arr=>arr[0]) // this should be saved for speed
 						// if good to go
 						// yesses += 1
 					}
@@ -508,49 +511,49 @@ class NodeClass {
 
 			for (var i in tx.outputs) {
 				const addrid = tx.outputs[i];
-				theNodeClass.utxo[addrid.digest] = true;
+				self.utxo[addrid.digest] = true;
 			}
 
-			if (theNodeClass.txsetDigests[tx.digest] !== true) {
-				theNodeClass.txset.push(tx);
-				theNodeClass.txsetDigests[tx.digest] = true;
+			if (self.txsetDigests[tx.digest] !== true) {
+				self.txset.push(tx);
+				self.txsetDigests[tx.digest] = true;
 			}
 
 			// resolve is not a return. code continues
-			resolve(new Vote(theNodeClass.pk, sign(tx.digest, theNodeClass.sk)));
+			resolve(new Vote(self.pk, sign(tx.digest, self.sk)));
 
 			// future use mset
 			// issue lowlevel block only if enough txs and period is open
-			if (theNodeClass.txset.length < HUND/2 || !theNodeClass.periodOpen)
+			if (self.txset.length < HUND/2 || !self.periodOpen)
 				return;
 
 			// now creating lowlevel block
 
-			const txsetBuffs = theNodeClass.txset.map(tx => Buffer.from(tx.digest, 'hex'));
+			const txsetBuffs = self.txset.map(tx => Buffer.from(tx.digest, 'hex'));
 			const txMerkle = fastRoot(txsetBuffs, hashBuffer).toString('hex');
-			const node = theNodeClass.nickname;
+			const node = self.nickname;
 
 			const h = hash(
-				theNodeClass.highlevelBlockHash +
-				theNodeClass.blockchain.getLatestBlock().hash +
+				self.highlevelBlockHash +
+				self.blockchain.getLatestBlock().hash +
 				'future mset' +
 				txMerkle);
-			const sig = sign(h, theNodeClass.sk);
-			const data = [h, theNodeClass.txset, sig, 'future mset', node];
+			const sig = sign(h, self.sk);
+			const data = [h, self.txset, sig, 'future mset', node];
 
-			const nextBlock = theNodeClass.blockchain.makeNextBlock(data);
-			theNodeClass.blockchain.addBlock(nextBlock);
-			THEFED.addLowlevelBlock(nextBlock);
+			const nextBlock = self.blockchain.makeNextBlock(data);
+			self.blockchain.addBlock(nextBlock);
+			messageFed('addLowlevelBlock', [nextBlock]);
 
-			const time = theNodeClass.jPeriod + '.' + theNodeClass.jEpoch;
+			const time = self.jPeriod + '.' + self.jEpoch;
 			log('---------- ' + node + ' issued block ' + time);
-			theNodeClass.blockchain.writeToFile('bc-'+node+'-'+time+'.txt');
+			self.blockchain.writeToFile('bc-'+node+'-'+time+'.txt');
 
-			theNodeClass.jEpoch += 1;
+			self.jEpoch += 1;
 
 			// future need to reset mset, pset
-			theNodeClass.txset = [];
-			theNodeClass.txsetDigests = {};
+			self.txset = [];
+			self.txsetDigests = {};
 		});
 	}
 }
@@ -633,7 +636,9 @@ class CentralBank {
 		});
 	}
 
-	addLowlevelBlock(block) { this.lowlevelQueue.push(block); }
+	addLowlevelBlock(block, self) {
+		self.lowlevelQueue.push(block);
+	}
 
 	// todo
 	// validates blocks and adds their txs to cb's txs
