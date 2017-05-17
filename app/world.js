@@ -56,13 +56,21 @@ function runCycle(userCycle, nameCycle, index) {
 
 
 function main() {
+	// instantiate central bank
+	// pass in node DTOs with keys {nickname, pk} to authorize
+	const testcentralbank = {nickname: 'Fed', passphrase: 'g h i j'};
+	const testfed = new fedcoin.CentralBank(testcentralbank.nickname,
+											testcentralbank.passphrase);
+	fedcoin.setTheFed(testfed);
+	log('fed initiated');
+
 	// instantiate nodeclasses
 	const testnodes = [
-		{nickname: 'N1', passphrase: 'b c d e'},
-		{nickname: 'N2', passphrase: 'c d e f'},
-		{nickname: 'N3', passphrase: 'd e f g'},
-		{nickname: 'N4', passphrase: 'e f g h'},
-		{nickname: 'N5', passphrase: 'f g h i'}
+			{nickname: 'N1', passphrase: 'b c d e'},
+			{nickname: 'N2', passphrase: 'c d e f'},
+			{nickname: 'N3', passphrase: 'd e f g'},
+			{nickname: 'N4', passphrase: 'e f g h'},
+			{nickname: 'N5', passphrase: 'f g h i'}
 		];
 	const testnodeclasses = [];
 	testnodes.forEach(n => {
@@ -71,22 +79,17 @@ function main() {
 		fedcoin.setNodemap(n.nickname, nc);
 		log('node ' + n.nickname + ' initiated');
 	});
-	const testnodesnames = testnodes.map(n=>n.nickname);
-	fedcoin.populateShardMap(testnodesnames);
+	fedcoin.populateShardMap(testnodes.map(n=>n.nickname));
 
-	// instantiate central bank
-	// pass in node DTOs with keys {nickname, pk} to authorize
-	const testcentralbank = {nickname: 'Fed', passphrase: 'g h i j'};
-	const testfed = new fedcoin.CentralBank(testcentralbank.nickname,
-										testcentralbank.passphrase,
-										testnodeclasses.map(nc => {
+	// provide authorized nodes to fed
+	testfed.initAuthorizedNodes(testnodeclasses.map(nc => {
 											return {
 												nickname: nc.nickname,
 												pk: nc.pk
 											}
 										}));
-	fedcoin.setTheFed(testfed);
-	log('fed initiated');
+
+return // todo
 
 	// instantiate user cycle A
 	const testnamesA = [

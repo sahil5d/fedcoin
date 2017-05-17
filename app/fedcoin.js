@@ -18,6 +18,7 @@ const blockchain = require('./blockchain');
 
 const FEW = 3;
 const HUND = 50;
+const MINUTE = 5;		// could change to 60
 const NSHARDS = 2;		// could change to 3. simple is 2
 const BITSRSA = 512;	// could change to 2048. simple is 512
 const NODEMAP = {};		// see world.js. key NODE, value NODECLASS
@@ -405,19 +406,14 @@ class User {
 class NodeClass {
 	constructor(nickname, passphrase) {
 		this.nickname = nickname;	// must be unique. bank stock symbol?
+		this.txset = [];			// array of unique sealed txs
+		this.txsetDigests = {};		// key is TX.DIGEST, val true==in TXSET
 		this.utxo = {};				// object of unspent tx outputs
 									// key is ADDRID.DIGEST, val true==unspent
 		this.pset = {};				// object of txs to catch double spending
 									// key is ADDRID.DIGEST, val is tx
-		this.txset = [];			// array of unique sealed txs
-		this.txsetDigests = {};		// key is TX.DIGEST, val true==in TXSET
 
 		this.shard = stringToShard(hash(nickname));
-
-		this.jEpoch = 0;				// epoch number
-		this.jPeriod = null;			// period number. set by central bank
-		this.periodOpen = false;		// set by cb
-		this.highlevelBlockHash = null;	// set by cb
 
 		// future update sks and pks every period
 		const privateKey = new NodeRSA({b: BITSRSA}); // for signing and verifs
@@ -428,6 +424,11 @@ class NodeClass {
 		this.wallet.createAddresses(FEW, passphrase);
 
 		this.blockchain = new blockchain.Blockchain(); // init blockchain
+
+		this.jEpoch = 1;				// epoch number
+		this.jPeriod = null;			// period number. set by central bank
+		this.periodOpen = false;		// set by cb
+		this.highlevelBlockHash = null;	// set by cb
 	}
 
 	// future need to validate this is signed by cb
@@ -540,11 +541,12 @@ class NodeClass {
 			const nextBlock = theNodeClass.blockchain.makeNextBlock(data);
 			theNodeClass.blockchain.addBlock(nextBlock);
 			THEFED.addLowlevelBlock(nextBlock);
-			theNodeClass.jEpoch += 1;
 
 			const time = theNodeClass.jPeriod + '.' + theNodeClass.jEpoch;
 			log('---------- ' + node + ' issued block ' + time);
 			theNodeClass.blockchain.writeToFile('bc-'+node+'-'+time+'.txt');
+
+			theNodeClass.jEpoch += 1;
 
 			// future need to reset mset, pset
 			theNodeClass.txset = [];
@@ -555,12 +557,10 @@ class NodeClass {
 
 
 class CentralBank {
-	constructor(nickname, passphrase, nodeDTOs) {
+	constructor(nickname, passphrase) {
 		this.nickname = nickname;
 		this.txset = [];
 		this.txsetDigests = {};
-
-		this.jPeriod = 0; // period number
 
 		const privateKey = new NodeRSA({b: BITSRSA});
 		this.sk = privateKey.exportKey('pkcs1-private');
@@ -569,6 +569,19 @@ class CentralBank {
 		this.wallet = new Wallet(nickname, passphrase); // to pay nodes/users
 		this.wallet.createAddresses(FEW, passphrase);
 
+		this.authorizedNodes = [];
+
+		this.blockchain = new blockchain.Blockchain();
+
+		this.jPeriod = 1; // period number
+
+		this.lowlevelQueue = []; // queue of lowlevel blocks pushed by nodes
+		this.lowlevelQueueValidated = [];
+
+		this.processLowlevelBlocks(0); // start the processing loop
+	}
+
+	initAuthorizedNodes(nodeDTOs) {
 		// array with each element {node nickname, node pk, sig(node pk,cb sk)}
 		this.authorizedNodes = nodeDTOs.map(dto => {
 			return {
@@ -578,8 +591,6 @@ class CentralBank {
 			};
 		});
 
-		// init blockchain, then issue first block with authorized nodes
-		this.blockchain = new blockchain.Blockchain();
 		const firstTxMerkle = hash('');
 		const h = hash(
 			this.blockchain.getLatestBlock().hash +
@@ -588,9 +599,10 @@ class CentralBank {
 		const data = [h, [], sig, this.authorizedNodes];
 		const nextBlock = this.blockchain.makeNextBlock(data);
 		this.blockchain.addBlock(nextBlock);
-		this.jPeriod += 1;
 		log('========== fed issued block ' + this.jPeriod);
 		this.blockchain.writeToFile('bc-FED-'+this.jPeriod+'.txt');
+
+		this.jPeriod += 1;
 
 		// broadcast to all nodes
 		// future should send with signature
@@ -600,11 +612,6 @@ class CentralBank {
 			messageNode(dto.nickname, 'setHighlevelBlockHash',
 				[this.blockchain.getLatestBlock().hash]);
 		});
-
-		this.lowlevelQueue = []; // queue of lowlevel blocks pushed by nodes
-		this.lowlevelQueueValidated = [];
-
-		this.processLowlevelBlocks(0);
 	}
 
 	// returns promise of success
@@ -671,6 +678,7 @@ class CentralBank {
 			}
 
 			resolve('done');
+
 		});
 	}
 
@@ -685,7 +693,7 @@ class CentralBank {
 		this.validateLowlevelBlocks(blocks)
 		.then(result => {
 			// period ends approx every minute
-			if (index === 5) { // todo
+			if (index === MINUTE) {
 				index = 0;
 
 				// notify nodes period ended
@@ -700,6 +708,10 @@ class CentralBank {
 				// notify nodes new period open
 					// give them period, periodOpen, and highLevelBlockHash
 					// and authorizedNodes (or broadcast the whole blockchain)
+
+
+				this.txset = [];
+				this.txsetDigests = {};
 			}
 
 			// repeat every second
