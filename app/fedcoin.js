@@ -93,18 +93,12 @@ function stringToShard(string) {
 	return decimal % NSHARDS;
 }
 
-// input all NODES in the world
-// populate SHARDMAP by assigning each node to shard
-function populateShardMap(nodes) {
-	for (var i = 0; i < NSHARDS; i++)
-		SHARDMAP.push([]);
-	
-	nodes.forEach(n => {
-		const shard = stringToShard(hash(n));
-		SHARDMAP[shard].push(n);
-	});
-
-	log('shards ' + JSON.stringify(SHARDMAP));
+// input NODE to assign to shard
+function setShardMap(node) {
+	const shard = stringToShard(hash(node));
+	if (!SHARDMAP[shard])
+		SHARDMAP[shard] = [];
+	SHARDMAP[shard].push(node);
 }
 
 function setNodemap(node, nodeClass) { NODEMAP[node] = nodeClass; }
@@ -585,6 +579,8 @@ class CentralBank {
 	}
 
 	initAuthorizedNodes(nodeDTOs) {
+		log('shards ' + JSON.stringify(SHARDMAP));
+
 		// array with each element {node nickname, node pk, sig(node pk,cb sk)}
 		this.authorizedNodes = nodeDTOs.map(dto => {
 			return {
@@ -731,7 +727,7 @@ class CentralBank {
 
 module.exports.setNodemap = setNodemap;
 module.exports.setTheFed = setTheFed;
-module.exports.populateShardMap = populateShardMap;
+module.exports.setShardMap = setShardMap;
 module.exports.Tx = Tx;
 module.exports.User = User;
 module.exports.NodeClass = NodeClass;
