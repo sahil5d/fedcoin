@@ -93,18 +93,6 @@ function stringToShard(string) {
 	return decimal % NSHARDS;
 }
 
-// future. implement. and check for iscentralbankprinting bc tx.inputs null
-function checkTx(tx) {
-	return true;
-	var inVal = 0, outVal = 0;
-	tx.inputs.forEach(ai => inVal += ai.value);
-	tx.outputs.forEach(ai => outVal += ai.value);
-	// 1 check input addrids point to valid txs
-	// 2 check sigs authorizing prev tx outputs are valid
-		// basically that the tx is signed?
-		// does this mean we need sigs on every tx?
-}
-
 // simulate http request to instance
 function messageNode(node, method, args) {
 	const nodeClass = NODEMAP[node];	// NODE is string
@@ -416,6 +404,19 @@ class NodeClass {
 		this.highlevelBlockHash = null;	// set by cb
 	}
 
+	// future. implement. and check for iscentralbankprinting bc tx.inputs null
+	static checkTx(tx) {
+		return true;
+		var inVal = 0, outVal = 0;
+		tx.inputs.forEach(ai => inVal += ai.value);
+		tx.outputs.forEach(ai => outVal += ai.value);
+		// 1 total input >= total output
+		// 2 check input addrids point to valid txs
+		// 3 check sigs authorizing prev tx outputs are valid
+			// basically that the tx is signed?
+			// does this mean we need sigs on every tx?
+	}
+
 	updateGlobalShardMap() {
 		if (!SHARDMAP[this.shard])
 			SHARDMAP[this.shard] = [];
@@ -449,7 +450,7 @@ class NodeClass {
 		return new Promise((resolve, reject) => {
 			const digest = addrid.digest;
 
-			if (!checkTx(tx) || self.shard !== addrid.shard) {
+			if (!NodeClass.checkTx(tx) || self.shard !== addrid.shard) {
 				resolve(null);
 			} else if (self.utxo[digest] || self.pset[digest].digest === tx.digest) {
 				self.utxo[digest] = null;	// idempotent action
@@ -469,7 +470,7 @@ class NodeClass {
 			const addridSample = tx.outputs[0];
 
 			// future pass ISCENTRALBANKPRINTING into checkTx
-			if (!checkTx(tx) || self.shard !== addridSample.shard) {
+			if (!NodeClass.checkTx(tx) || self.shard !== addridSample.shard) {
 				resolve(null);
 				return;
 			}

@@ -19,11 +19,11 @@ function fedStartCycle(testfed, testcentralbank, userCycle, nameCycle) {
 			ag2.addrid = tx.outputs[0];
 			userCycle[0].wallet.addRichAGs([ag2], nameCycle[0].passphrase);
 			testfed.wallet.addUsedAGs([ag1], testcentralbank.passphrase);
-			log('fed->user tx succeeded');
+			log('fed -> user tx succeeded');
 
 			runCycle(userCycle, nameCycle, 0);
 		} else {
-			log('fed->user tx failed');
+			log('fed -> user tx failed');
 		}
 	});
 }
@@ -79,7 +79,7 @@ function main() {
 
 	testfed.startProcessLoop();
 
-return; // todo
+	return; // todo
 
 	// instantiate user cycle A
 	const testnamesA = [
