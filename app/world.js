@@ -57,7 +57,7 @@ function runCycle(userCycle, nameCycle, index) {
 
 function main() {
 	// instantiate central bank
-	const testcentralbank = {nickname: 'Fed', passphrase: 'g h i j'};
+	const testcentralbank = {nickname: 'Fed', passphrase: 'a b c d'};
 	const testfed = new fedcoin.CentralBank(testcentralbank.nickname,
 											testcentralbank.passphrase);
 	log('fed initiated');
@@ -83,9 +83,9 @@ function main() {
 
 	// instantiate user cycle A
 	const testnamesA = [
-		{nickname: 'Alpha', passphrase: 'h i j k'},
-		{nickname: 'Beta', passphrase: 'i j k l'},
-		{nickname: 'Gamma', passphrase: 'j k l m'}
+		{nickname: 'Alpha', passphrase: 'g h i j'},
+		{nickname: 'Beta', passphrase: 'h i j k'},
+		{nickname: 'Gamma', passphrase: 'i j k l'}
 		];
 	const testusersA = [];
 	testnamesA.forEach(n => {
@@ -96,9 +96,9 @@ function main() {
 
 	// instantiate user cycle B
 	const testnamesB = [
-		{nickname: 'Delta', passphrase: 'k l m n'},
-		{nickname: 'Epsilon', passphrase: 'l m n o'},
-		{nickname: 'Zeta', passphrase: 'm n o p'}
+		{nickname: 'Delta', passphrase: 'j k l m'},
+		{nickname: 'Epsilon', passphrase: 'k l m n'},
+		{nickname: 'Zeta', passphrase: 'l m n o'}
 		];
 	const testusersB = [];
 	testnamesB.forEach(n => {

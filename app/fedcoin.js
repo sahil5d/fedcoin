@@ -262,11 +262,11 @@ class Wallet {
 		this.addressCount = 0;
 
 		// AG abbreviates "address group"
-		// arrays of {sk: value, pk: value, address: value, addrid: value}
+		// arrays of {sk: val, pk: val, address: val, addrid: val}
 		// future encrypt all the sks
 		this.spareAGs = [];		// queue
-		this.usedAGs = [];		// list
 		this.richAGs = [];		// queue
+		this.usedAGs = [];		// list
 	}
 
 	// input N addresses to create, PASSPHRASE required
